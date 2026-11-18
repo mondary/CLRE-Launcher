@@ -758,7 +758,7 @@ body.couch .content { --edge: 32px; }
 /* macOS : la barre de titre native est masquée, les zones vides déplacent la fenêtre.
    Les contrôles reprennent la main explicitement, sinon ils deviennent des zones de glissement. */
 html[data-platform="darwin"] .topbar,
-html[data-platform="darwin"] .sidebar { -webkit-app-region: drag; }
+html[data-platform="darwin"] .brand { -webkit-app-region: drag; }
 html[data-platform="darwin"] .topbar button,
 html[data-platform="darwin"] .topbar input,
 html[data-platform="darwin"] .sidebar button,

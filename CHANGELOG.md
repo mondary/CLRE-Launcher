@@ -4,6 +4,11 @@ Les versions suivent le calendrier : `AAAA.MM.PATCH`. Le fork macOS garde sa pro
 numérotation ; le dépôt d'origine utilise encore SemVer (`2.0.0`), d'où l'écart assumé
 avec `package.json` en amont.
 
+## 2026.11.2 — 2026-11-18
+
+- macOS : zones de glissement de la fenêtre limitées à la barre supérieure et au logo,
+  pour que les clics dans la barre latérale (semaine, collections) restent des clics.
+
 ## 2026.11.1 — 2026-11-18
 
 Première version macOS jouable du fork. Windows garde le comportement d'origine.

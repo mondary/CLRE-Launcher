@@ -4,7 +4,7 @@ Fork macOS de [jclementc/CLRE-Launcher](https://github.com/jclementc/CLRE-Launch
 Objectif : un launcher unique sur macOS, puis une version Steam Deck. Windows reste la
 référence : la couche plateforme ne doit rien changer à son comportement.
 
-Dernière mise à jour : 2026-11-18 · version `2026.11.1`.
+Dernière mise à jour : 2026-11-18 · version `2026.11.2`.
 
 ## État actuel
 
