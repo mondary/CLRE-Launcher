@@ -189,6 +189,7 @@ function appFromExecutable(installPath, executable) {
 }
 
 const isMacPlatform = (p) => !p || /^(mac|osx|darwin)/i.test(String(p));
+const normName = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
 
 // ---------- GOG Galaxy ----------
 // GOG installe ses jeux en bundles .app et laisse un marqueur goggame-<id>.info dans les
@@ -469,7 +470,9 @@ function loadEpic(stats) {
   const egl = require('../epic').loadEpic(stats, { dataDir: epicDataDir, platform: 'mac' });
   heroicMerged = new Set();
   for (const h of loadHeroic().epic) {
-    const ex = egl.games.find((g) => g.appName === h.appName);
+    // Le cache Epic et Legendary ne nomment pas toujours l'app pareil : on retombe sur le titre.
+    const ex = egl.games.find((g) => g.appName === h.appName)
+      || egl.games.find((g) => normName(g.name) === normName(h.name));
     if (!ex) continue;
     heroicMerged.add(h.appName);
     Object.assign(ex, {
