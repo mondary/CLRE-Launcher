@@ -78,8 +78,12 @@ function toggleInCollection(id, key) {
   }
   render({ quiet: true });
   api.toggleSteamCollection(id, key, on).then((r) => {
-    if (r && r.queued) toast(`Sera écrit dans Steam à sa fermeture`);
-    else if (r && r.error) toast(r.error);
+    if (r && r.queued) {
+      state.lib.steamPending = r.pending;
+      state.lib.steamRunning = true;
+      render({ quiet: true });
+      toast('Sera écrit dans Steam à sa fermeture');
+    } else if (r && r.error) toast(r.error);
   }).catch((e) => toast(String((e && e.message) || e)));
 }
 
@@ -492,6 +496,7 @@ settingsSystem = function (prefs) {
   <fieldset class="field set"><legend>Collections Steam</legend>
     <p class="small">${(state.lib && state.lib.steamRunning) ? 'Steam est ouvert : les changements sont mis en attente et écrits à sa fermeture.' : 'Steam est fermé : les changements sont écrits immédiatement.'}</p>
     <p class="small">${(state.lib && state.lib.steamPending) ? `${state.lib.steamPending} changement(s) en attente.` : 'Aucun changement en attente.'}</p>
+    ${(state.lib && state.lib.steamPending) ? '<button type="button" class="btn btn-light" data-steam-apply>Fermer Steam et appliquer</button>' : ''}
     <p class="small">Statuts associés : ${Object.values((state.lib && state.lib.statusLabels) || {}).filter(Boolean).map(esc).join(' · ') || 'aucun'}</p>
     <p class="small">Les collections dynamiques (filtres) sont gérées par Steam et ne sont jamais modifiées.</p>
   </fieldset>

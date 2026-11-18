@@ -13,7 +13,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 
 const PREFIX = 'user-collections.';
 const KEEP_BACKUPS = 10;
@@ -115,6 +115,50 @@ function backup(file, backupDir) {
     try { fs.unlinkSync(path.join(backupDir, f)); } catch { /* rien */ }
   }
   return dest;
+}
+
+// Fermeture propre de Steam, puis relance. Utilisé uniquement sur demande explicite :
+// l'interface prévient et refuse si un jeu tourne. Steam reprend ses téléchargements
+// et sa synchro cloud au redémarrage.
+function quitSteam() {
+  if (process.platform === 'darwin') {
+    try {
+      execFileSync('osascript', ['-e', 'tell application "Steam" to quit'], { timeout: 8000 });
+      return true;
+    } catch { /* permission Automatisation refusée : on tente un arrêt propre du processus */ }
+    try {
+      execFileSync('pkill', ['-TERM', '-f', 'Steam.app/Contents/MacOS/steam_osx'], { timeout: 4000 });
+      return true;
+    } catch { return false; }
+  }
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/IM', 'steam.exe'], { windowsHide: true, timeout: 8000 });
+      return true;
+    }
+    execFileSync('steam', ['-shutdown'], { timeout: 8000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function launchSteam() {
+  try {
+    if (process.platform === 'darwin') {
+      const child = spawn('open', ['-a', 'Steam'], { detached: true, stdio: 'ignore' });
+      child.unref();
+      return true;
+    }
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', 'steam://open/main'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      return true;
+    }
+    spawn('steam', [], { detached: true, stdio: 'ignore' }).unref();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function writeAtomic(file, data) {
@@ -224,4 +268,5 @@ function statusForApp(collections, statusMap, appid) {
 module.exports = {
   namespaceFile, listCollections, parseCollection, isSteamRunning, apply,
   detectStatusMap, statusForApp, STATUS_PATTERNS, norm,
+  quitSteam, launchSteam,
 };

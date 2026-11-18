@@ -293,7 +293,7 @@ function progressPanel(g) {
         <span class="ic">${ui.icon}</span><span class="tx"><span class="l">${esc(l)}</span><span class="h">${esc(ui.hint)}</span></span>
       </button>`;
     }).join('')}</div>
-    ${(state.lib && state.lib.steamRunning) ? '<p class="small">Steam est ouvert : les changements seront écrits dans tes collections Steam à sa fermeture.</p>' : ''}
+    ${(state.lib && state.lib.steamRunning) ? `<p class="small">Steam est ouvert : les changements seront écrits dans tes collections Steam à sa fermeture.</p>${state.lib.steamPending ? '<button type="button" class="btn btn-ghost" data-steam-apply>Fermer Steam et appliquer</button>' : ''}` : ''}
     ${cols.length ? `<div class="coll-picker">
       <p class="nav-title">Collections Steam</p>
       ${cols.map((c) => `<label class="check"><input type="checkbox" data-coll-toggle="${esc(c.id)}" data-key="${esc(g.key)}" ${inColl.has(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}
@@ -462,8 +462,12 @@ document.addEventListener('click', (e) => {
     g.status = next;
     render({ quiet: true });
     api.setSteamStatus(k, next).then((r) => {
-      if (r && r.queued) toast('Statut enregistré — écriture dans Steam à sa fermeture');
-      else if (r && r.error) toast(r.error);
+      if (r && r.queued) {
+        state.lib.steamPending = r.pending;
+        state.lib.steamRunning = true;
+        render({ quiet: true });
+        toast('Statut enregistré — écriture dans Steam à sa fermeture');
+      } else if (r && r.error) toast(r.error);
     }).catch((e) => toast(String((e && e.message) || e)));
     return;
   }
@@ -478,6 +482,23 @@ document.addEventListener('change', (e) => {
   if (!t) return;
   toggleInCollection(t.dataset.collToggle, t.dataset.key);
 });
+
+// Écriture immédiate : ferme Steam, écrit, le relance (confirmation et refus si un jeu tourne).
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-steam-apply]');
+  if (!b || b.disabled) return;
+  b.disabled = true;
+  const old = b.textContent;
+  b.textContent = 'Fermeture de Steam…';
+  api.applySteamNow().then((r) => {
+    if (r && r.error) toast(r.error);
+    else if (r && r.ok) toast(r.relaunched ? 'Collections écrites · Steam relancé' : 'Collections écrites');
+  }).catch((err) => toast(String((err && err.message) || err))).finally(() => {
+    b.disabled = false;
+    b.textContent = old;
+    setTimeout(() => sync(true), 1500);
+  });
+}, true);
 
 let noteTimer;
 document.addEventListener('input', (e) => {

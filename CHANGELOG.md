@@ -4,6 +4,16 @@ Les versions suivent le calendrier : `AAAA.MM.PATCH`. Le fork macOS garde sa pro
 numérotation ; le dépôt d'origine utilise encore SemVer (`2.0.0`), d'où l'écart assumé
 avec `package.json` en amont.
 
+## 2026.11.6 — 2026-11-18
+
+- **« Fermer Steam et appliquer »** : un bouton (fiche de jeu et réglages) ferme Steam
+  proprement, écrit les collections, puis le relance. Confirmation explicite, refus si un
+  jeu Steam tourne, attente de la fermeture effective (40 s max), sauvegarde avant écriture.
+  Le tout prend une quinzaine de secondes ; les téléchargements Steam reprennent ensuite.
+- Si Steam n'est pas lancé, le bouton écrit simplement les changements en attente.
+- Repli `pkill -TERM` si AppleScript ne peut pas quitter Steam (permission Automatisation
+  refusée).
+
 ## 2026.11.5 — 2026-11-18
 
 - **Les statuts et les collections sont ceux de Steam.** Plus de listes locales parallèles :

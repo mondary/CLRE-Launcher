@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld('launcher', {
   renameSteamCollection: call('steam:rename-collection'),
   deleteSteamCollection: call('steam:delete-collection'),
   applySteam: call('steam:apply'),
+  applySteamNow: call('steam:apply-now'),
   setSteamStatusMap: call('steam:set-status-map'),
   fullscreen: call('fullscreen'),
   storeDetails: call('store-details'),

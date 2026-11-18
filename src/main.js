@@ -291,6 +291,16 @@ function flushSteamPending() {  const p = readPrefs();
   }
 }
 
+// Attend la fermeture effective de Steam (il peut mettre plusieurs secondes à rendre la main).
+async function waitForSteamExit(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (!lib || !lib.steamPath || !steamCollections.isSteamRunning(lib.steamPath)) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
 
 // ---------- Synchronisation de toutes les plateformes ----------
 async function sync(fresh) {
@@ -1121,6 +1131,33 @@ app.whenReady().then(() => {
     return queueSteamOps([{ id: c.id, delete: true }]);
   });
   ipcMain.handle('steam:apply', () => flushSteamPending());
+  ipcMain.handle('steam:apply-now', async () => {
+    if (!pendingSteamCount()) return { ok: true, pending: 0 };
+    if (!lib || !lib.steamPath) return { error: 'Steam introuvable' };
+    const wasRunning = steamCollections.isSteamRunning(lib.steamPath);
+    if (wasRunning) {
+      // Ne jamais fermer Steam pendant une partie.
+      if (platform.steamRunningAppIdSync() || (lib.running || []).some((k) => /^\d+$/.test(k))) {
+        return { error: 'Un jeu Steam est en cours : ferme-le avant d’appliquer.' };
+      }
+      const opts = {
+        type: 'question',
+        buttons: ['Fermer Steam et appliquer', 'Annuler'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Écrire dans tes collections Steam',
+        message: 'Steam va être fermé, tes collections écrites, puis Steam relancé.',
+        detail: `${pendingSteamCount()} changement(s) en attente. Steam sera indisponible quelques secondes ; ses téléchargements reprendront ensuite.`,
+      };
+      const ans = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+      if (ans.response !== 0) return { cancelled: true, pending: pendingSteamCount() };
+      if (!steamCollections.quitSteam()) return { error: 'Steam n’a pas pu être fermé. Quitte-le à la main, puis réessaie.' };
+      if (!(await waitForSteamExit(40000))) return { error: 'Steam ne s’est pas fermé à temps. Réessaie une fois fermé à la main.' };
+    }
+    const res = flushSteamPending();
+    const relaunched = wasRunning ? steamCollections.launchSteam() : false;
+    return { ...res, relaunched };
+  });
   ipcMain.handle('steam:set-status-map', (_e, map) => {
     const allowed = new Set((lib.collections || []).map((c) => c.id));
     const clean = {};

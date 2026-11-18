@@ -84,6 +84,13 @@ Les quatre statuts sont **détectés par nom** dans les collections statiques :
 finished), `dropped` (Discarded, Abandonné). L'association est enregistrée dans
 `prefs.steamStatusMap` ; si une collection est supprimée, elle est re-détectée.
 
+#### Fermer et relancer Steam
+Le bouton « Fermer Steam et appliquer » (`steam:apply-now`) refuse de s'exécuter si un jeu
+Steam tourne (`RunningAppID` ou session en cours), demande confirmation, quitte Steam
+(AppleScript, repli `pkill -TERM` / `taskkill` / `steam -shutdown`), attend la sortie du
+processus (40 s max), écrit, puis relance Steam (`open -a Steam`). Sur macOS, la première
+utilisation peut déclencher la demande d'autorisation « Automatisation » de macOS.
+
 ### Epic
 Le cache est dans `~/Library/Application Support/Epic/EpicGamesLauncher/Data`, avec la
 même structure que `ProgramData\Epic\...` : `Catalog/catcache.bin` (JSON en base64) et

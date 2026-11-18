@@ -75,8 +75,12 @@ function setStatusFor(key, status) {
   if (g) g.status = status || '';
   render({ quiet: true });
   api.setSteamStatus(key, status || '').then((r) => {
-    if (r && r.queued) toast('Statut enregistré — écriture dans Steam à sa fermeture');
-    else if (r && r.error) toast(r.error);
+    if (r && r.queued) {
+      state.lib.steamPending = r.pending;
+      state.lib.steamRunning = true;
+      render({ quiet: true });
+      toast('Statut enregistré — écriture dans Steam à sa fermeture');
+    } else if (r && r.error) toast(r.error);
   }).catch((e) => toast(String((e && e.message) || e)));
 }
 // Statut depuis la fiche (gestionnaire existant) : on retient l'ancien pour pouvoir annuler

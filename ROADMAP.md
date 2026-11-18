@@ -4,7 +4,7 @@ Fork macOS de [jclementc/CLRE-Launcher](https://github.com/jclementc/CLRE-Launch
 Objectif : un launcher unique sur macOS, puis une version Steam Deck. Windows reste la
 référence : la couche plateforme ne doit rien changer à son comportement.
 
-Dernière mise à jour : 2026-11-18 · version `2026.11.5`.
+Dernière mise à jour : 2026-11-18 · version `2026.11.6`.
 
 ## État actuel
 
@@ -58,10 +58,10 @@ Légende : ✅ fonctionne · 🟡 partiel ou à valider à l'écran · ❌ absen
 - [x] **Statuts et collections Steam** : lecture/écriture dans les collections de
       l'utilisateur, détection `PLAYING`/`Play next`/`DONE`/`Discarded`, sauvegarde et
       version incrémentée, file d'attente quand Steam tourne.
+- [x] **Écrire sans fermer Steam à la main** : bouton « Fermer Steam et appliquer » qui
+      ferme Steam, écrit les collections puis le relance.
 - [ ] **Associer un statut à une autre collection** dans les réglages (aujourd'hui
       détection par nom, sans interface de choix).
-- [ ] **Écrire sans fermer Steam** : proposer « Fermer Steam et appliquer » depuis le
-      launcher, plutôt que d'attendre sa fermeture.
 - [ ] **Jeux non-Steam dans les collections Steam** : créer des raccourcis Steam
       (`shortcuts.vdf`) pour qu'Epic/GOG/itch puissent entrer dans une collection Steam.
 - [ ] **Raccourci Bureau** : alias Finder ou petit `.app` généré par `osacompile`.
