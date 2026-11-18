@@ -4,6 +4,30 @@ Les versions suivent le calendrier : `AAAA.MM.PATCH`. Le fork macOS garde sa pro
 numérotation ; le dépôt d'origine utilise encore SemVer (`2.0.0`), d'où l'écart assumé
 avec `package.json` en amont.
 
+## 2026.11.5 — 2026-11-18
+
+- **Les statuts et les collections sont ceux de Steam.** Plus de listes locales parallèles :
+  le launcher lit `cloud-storage-namespace-<n>.json` et écrit dedans.
+- **Détection automatique** des quatre collections de statut par leur nom :
+  `▶️ PLAYING`, `➡️ Play next`, `✅ DONE`, `❌ Discarded` (ou En cours / À faire / Terminé /
+  Abandonné). Les compteurs de la barre latérale viennent de ces collections.
+- **Écriture sûre** : sauvegarde horodatée avant chaque écriture, version incrémentée pour
+  que Steam accepte la modification, écriture atomique, relecture de contrôle. Les
+  collections **dynamiques** (filtres) ne sont jamais modifiées.
+- **Steam ouvert** : les changements sont mis en attente et appliqués automatiquement à sa
+  fermeture (ou au prochain démarrage du launcher). L'interface montre l'état voulu
+  immédiatement, et les changements en attente sont fusionnés sans écraser ceux faits
+  dans Steam entre-temps.
+- **Interface unifiée** : « Statut » (les quatre collections), « Collections Steam » (les
+  autres), un seul panneau « Statut et collections Steam » sur la fiche d'un jeu, et
+  « Tags » renommé « Tags du magasin ».
+- Les jeux non-Steam n'ont plus de statut local : Steam ne peut pas les ranger dans ses
+  collections.
+- Réglages : section « Collections Steam » (Steam ouvert/fermé, changements en attente,
+  collections associées aux statuts).
+- Tests : lecture, création, ajout/retrait, version, sauvegarde, refus si Steam tourne,
+  collections dynamiques intactes, priorité de statut.
+
 ## 2026.11.4 — 2026-11-18
 
 - **Heroic** : les builds Windows/Wine sont désormais listés et lancés par le protocole

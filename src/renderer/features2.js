@@ -44,19 +44,43 @@ function askName(title, placeholder, done) {
 }
 
 // ---------- Collections perso ----------
-const myCollections = () => state.local.collections || [];
-function saveCollections(list) { state.local.collections = list; saveLocal(); }
+// Les collections sont celles de Steam : pas de liste locale parallèle.
+const myCollections = () => {
+  const lib = state.lib || {};
+  const statusIds = new Set(Object.values(lib.statusMap || {}).filter(Boolean));
+  return (lib.collections || [])
+    .filter((c) => !statusIds.has(c.id))
+    .map((c) => ({ id: c.id, name: c.name, keys: (c.apps || []).map(String), steam: true }));
+};
 function createCollection(withKey) {
-  askName('Nouvelle collection', 'Soirée coop, Jeux courts…', (name) => {
-    const c = { id: Date.now().toString(36), name, keys: withKey ? [withKey] : [] };
-    saveCollections([...myCollections(), c]);
-    toast(`Collection « ${name} » créée`);
-    render({ quiet: true });
+  askName('Nouvelle collection Steam', 'Soirée coop, Jeux courts…', (name) => {
+    (async () => {
+      try {
+        const r = await api.createSteamCollection(name);
+        if (withKey && r.id) await api.toggleSteamCollection(r.id, withKey, true);
+        await sync(true);
+        toast(r.queued ? `Collection « ${name} » créée — sera écrite dans Steam à sa fermeture` : `Collection « ${name} » créée dans Steam`);
+      } catch (e) { toast(String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
+    })();
   });
 }
 function toggleInCollection(id, key) {
-  saveCollections(myCollections().map((c) => (c.id !== id ? c : { ...c, keys: c.keys.includes(key) ? c.keys.filter((k) => k !== key) : [...c.keys, key] })));
+  const c = myCollections().find((x) => x.id === id);
+  const g = byId(key);
+  if (!c) return;
+  if (!g || g.store !== 'steam') { toast('Seuls les jeux Steam peuvent entrer dans une collection Steam'); return; }
+  const on = !c.keys.includes(key);
+  const col = (state.lib.collections || []).find((x) => x.id === id);
+  if (col) {
+    const apps = new Set((col.apps || []).map(String));
+    if (on) apps.add(String(g.appid)); else apps.delete(String(g.appid));
+    col.apps = [...apps];
+  }
   render({ quiet: true });
+  api.toggleSteamCollection(id, key, on).then((r) => {
+    if (r && r.queued) toast(`Sera écrit dans Steam à sa fermeture`);
+    else if (r && r.error) toast(r.error);
+  }).catch((e) => toast(String((e && e.message) || e)));
 }
 
 function specialList(r, list, title, sub) {
@@ -464,6 +488,12 @@ settingsSystem = function (prefs) {
   <fieldset class="field set"><legend>Mises à jour du launcher</legend>
     <div class="pick"><input name="updateRepo" value="${esc(s.updateRepo || '')}" placeholder="propriétaire/depot sur GitHub"><button type="button" class="btn btn-ghost" id="check-update">Vérifier</button></div>
     <small id="update-status">Version installée : <span id="app-version"></span>. Le launcher cherche les nouvelles versions publiées sur ce dépôt</small>
+  </fieldset>
+  <fieldset class="field set"><legend>Collections Steam</legend>
+    <p class="small">${(state.lib && state.lib.steamRunning) ? 'Steam est ouvert : les changements sont mis en attente et écrits à sa fermeture.' : 'Steam est fermé : les changements sont écrits immédiatement.'}</p>
+    <p class="small">${(state.lib && state.lib.steamPending) ? `${state.lib.steamPending} changement(s) en attente.` : 'Aucun changement en attente.'}</p>
+    <p class="small">Statuts associés : ${Object.values((state.lib && state.lib.statusLabels) || {}).filter(Boolean).map(esc).join(' · ') || 'aucun'}</p>
+    <p class="small">Les collections dynamiques (filtres) sont gérées par Steam et ne sont jamais modifiées.</p>
   </fieldset>
   <fieldset class="field set"><legend>Mes données</legend>
     <div class="actions"><button type="button" class="btn btn-ghost" id="export-data">Exporter</button><button type="button" class="btn btn-ghost" id="import-data">Importer</button></div>

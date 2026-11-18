@@ -1,7 +1,7 @@
 {
   "name": "launcher",
   "productName": "CLRE-Launcher",
-  "version": "2026.11.4",
+  "version": "2026.11.5",
   "description": "Lanceur de jeux qui synchronise ta bibliothèque Steam",
   "main": "src/main.js",
   "license": "MIT",

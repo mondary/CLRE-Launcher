@@ -764,3 +764,7 @@ html[data-platform="darwin"] .topbar input,
 html[data-platform="darwin"] .sidebar button,
 html[data-platform="darwin"] .sidebar a,
 html[data-platform="darwin"] .sidebar input { -webkit-app-region: no-drag; }
+
+/* Fiche jeu : statut et collections Steam dans un seul panneau */
+.coll-picker { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.coll-picker .check { font-size: 13px; }

@@ -71,19 +71,22 @@ function toastUndo(msg, undo) {
 }
 const STATUS_LABEL = () => ({ ...STATUSES });
 function setStatusFor(key, status) {
-  state.local.status = { ...state.local.status };
-  if (status) state.local.status[key] = status; else delete state.local.status[key];
-  saveLocal();
+  const g = byId(key);
+  if (g) g.status = status || '';
   render({ quiet: true });
+  api.setSteamStatus(key, status || '').then((r) => {
+    if (r && r.queued) toast('Statut enregistré — écriture dans Steam à sa fermeture');
+    else if (r && r.error) toast(r.error);
+  }).catch((e) => toast(String((e && e.message) || e)));
 }
 // Statut depuis la fiche (gestionnaire existant) : on retient l'ancien pour pouvoir annuler
 window.addEventListener('click', (e) => {
   const t = e.target.closest('[data-status]');
   if (!t) return;
   const key = t.dataset.id;
-  const before = (state.local.status || {})[key] || '';
+  const before = statusOf(byId(key) || {});
   setTimeout(() => {
-    const after = (state.local.status || {})[key] || '';
+    const after = statusOf(byId(key) || {});
     if (after === before) return;
     const g = byId(key);
     toastUndo(after ? `${g ? g.name : 'Jeu'} · ${STATUS_LABEL()[after]}` : 'Statut retiré', () => setStatusFor(key, before));
@@ -118,10 +121,10 @@ function openMenu(key, x, y) {
     ${it('open', 'Voir la fiche', ICONS.ext)}
     <div class="ctx-sep"></div>
     ${it('fav', isFav(g) ? 'Retirer des favoris' : 'Ajouter aux favoris', isFav(g) ? ICONS.heartFill : ICONS.heart)}
-    <div class="ctx-sub"><button type="button" role="menuitem" class="has-sub"><span class="ic"></span><span>Statut</span><span class="hint">${esc(st ? STATUSES[st] : 'Aucun')}</span></button>
+    ${g.store === 'steam' ? `<div class="ctx-sub"><button type="button" role="menuitem" class="has-sub"><span class="ic"></span><span>Statut Steam</span><span class="hint">${esc(st ? STATUSES[st] : 'Aucun')}</span></button>
       <div class="ctx-menu sub">${Object.entries(STATUSES).map(([id, l]) => it('status', l, st === id ? ICONS.ok : '', `data-v="${id}"`)).join('')}${st ? '<div class="ctx-sep"></div>' + it('status', 'Retirer le statut', '', 'data-v=""') : ''}</div></div>
-    <div class="ctx-sub"><button type="button" role="menuitem" class="has-sub"><span class="ic"></span><span>Ajouter à une collection</span></button>
-      <div class="ctx-menu sub">${cols.map((c) => it('coll', esc(c.name), c.keys.includes(g.key) ? ICONS.ok : '', `data-v="${esc(c.id)}"`)).join('')}${cols.length ? '<div class="ctx-sep"></div>' : ''}${it('newcoll', 'Nouvelle collection…', ICONS.plus)}</div></div>
+    <div class="ctx-sub"><button type="button" role="menuitem" class="has-sub"><span class="ic"></span><span>Collections Steam</span></button>
+      <div class="ctx-menu sub">${cols.map((c) => it('coll', esc(c.name), c.keys.includes(g.key) ? ICONS.ok : '', `data-v="${esc(c.id)}"`)).join('')}${cols.length ? '<div class="ctx-sep"></div>' : ''}${it('newcoll', 'Nouvelle collection…', ICONS.plus)}</div></div>` : ''}
     <div class="ctx-sep"></div>
     ${g.installDir && g.installed ? it('folder', 'Ouvrir le dossier', ICONS.folder) : ''}
     ${it('party-plan', 'Planifier une soirée…')}

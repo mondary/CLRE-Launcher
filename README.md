@@ -31,6 +31,11 @@ Gratuit · Open source (MIT) · Windows · macOS (fork expérimental) · Aucun c
 > natif ou Wine), EA app, itch.io, Battle.net, League of Legends, jeux ajoutés à la
 > main (`.app`), temps de jeu hors Steam, présence Discord.
 >
+> **Organisation** : les statuts (À faire, En cours, Terminé, Abandonné) et les collections
+> sont **écrits dans tes collections Steam** (`▶️ PLAYING`, `✅ DONE`…) — pas dans un système
+> parallèle. Si Steam est ouvert, les changements sont mis en attente et appliqués à sa
+> fermeture, avec sauvegarde avant chaque écriture.
+>
 > **Pas encore** : sauvegardes Ludusavi, réticule, perf CPU/GPU/FPS, raccourci Bureau,
 > mise à jour intégrée, signature/notarisation, installation directe GOG/Epic.
 >

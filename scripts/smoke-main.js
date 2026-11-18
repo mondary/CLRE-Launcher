@@ -117,6 +117,15 @@ setTimeout(async () => {
       console.log(`Bibliothèque — ${lib.games.length} jeux · ${counts || 'aucun'} · ${lib.games.filter((g) => g.installed).length} installés`);
       const sample = lib.games.slice(0, 5).map((g) => `${g.store}/${g.name}`);
       if (sample.length) console.log(`Exemples — ${sample.join(' · ')}`);
+      const st = lib.games.reduce((m, g) => { if (g.status) m[g.status] = (m[g.status] || 0) + 1; return m; }, {});
+      if (Object.keys(st).length) console.log(`Statuts Steam — ${JSON.stringify(st)} · ${JSON.stringify(lib.statusLabels || {})}`);
+      if (process.argv.includes('--status')) {
+        const g = lib.games.find((x) => x.store === 'steam');
+        const r = await handlers.get('steam:set-status')({}, g.key, 'done');
+        const state = await handlers.get('steam:state')({});
+        console.log(`Statut test — ${g.name} → done · ${JSON.stringify(r)}`);
+        console.log(`État Steam — ${JSON.stringify(state)}`);
+      }
     } catch (e) { return fail(e); }
   }
   process.exit(0);

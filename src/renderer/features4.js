@@ -283,20 +283,20 @@ renderSidebar = function () {
   const cols = myCollections();
   const hidden = (state.local.hidden || []).length;
   const stores = Object.keys(STORE_NAME).map((id) => [id, all.filter((g) => g.store === id).length]).filter(([, n]) => n);
-  const steamCols = (state.lib && state.lib.collections) || [];
+  const dyn = (state.lib && state.lib.dynamicCollections) || [];
   $('#nav-collections').innerHTML = [
     section('activity', 'Activité', ['history', 'journal', 'recap', 'showcase', 'party'],
       item('history', ICONS.history, 'Historique') + item('journal', ICONS.journal, 'Journal') + item('recap', ICONS.recap, 'Récap') + item('showcase', ICONS.trophy, 'Vitrine') + item('party', ICONS.party || ICONS.history, 'Soirées')),
-    section('progress', 'Progression', ['status'],
+    section('progress', 'Statut', ['status'],
       Object.entries(STATUSES).map(([id, label]) => `<button type="button" class="nav-item small ${r.view === 'status' && r.id === id ? 'active' : ''}" data-nav="status" data-id="${id}"><span class="dot status-${id}"></span><span class="label">${label}</span><span class="count">${counts[id] || ''}</span></button>`).join('')),
-    section('mine', 'Mes collections', ['mycoll', 'hidden'],
-      (cols.length ? cols.map((c) => small('mycoll', c.id, c.name, c.keys.length)).join('') : '<p class="nav-hint">Range tes jeux à ta façon</p>') + (hidden ? small('hidden', null, 'Jeux masqués', hidden).replace(' data-id="null"', '') : ''),
-      `<button type="button" class="mini-btn" data-act="new-collection" aria-label="Nouvelle collection" title="Nouvelle collection">${ICONS.plus}</button>`),
+    section('mine', 'Collections Steam', ['mycoll', 'hidden'],
+      (cols.length ? cols.map((c) => small('mycoll', c.id, c.name, c.keys.length)).join('') : '<p class="nav-hint">Toutes tes collections servent de statuts</p>') + (hidden ? small('hidden', null, 'Jeux masqués', hidden).replace(' data-id="null"', '') : ''),
+      `<button type="button" class="mini-btn" data-act="new-collection" aria-label="Nouvelle collection Steam" title="Nouvelle collection Steam">${ICONS.plus}</button>`),
     section('browse', 'Parcourir', ['tags', 'store'],
-      item('tags', ICONS.tag, 'Tags') + (stores.length > 1 ? stores.map(([id, n]) => small('store', id, STORE_NAME[id], n, platIcon(id, 16))).join('') : '')),
+      item('tags', ICONS.tag, 'Tags du magasin') + (stores.length > 1 ? stores.map(([id, n]) => small('store', id, STORE_NAME[id], n, platIcon(id, 16))).join('') : '')),
     section('tools', 'Outils', ['screenshots', 'storage', 'saves'],
       item('screenshots', ICONS.image, 'Captures') + item('storage', ICONS.disk, 'Stockage') + item('saves', ICONS.save, 'Sauvegardes')),
-    steamCols.length ? section('steamcoll', 'Collections Steam', ['collection'], steamCols.map((c) => small('collection', c.id, c.name, c.apps.length)).join('')) : '',
+    dyn.length ? section('dyn', 'Dynamiques Steam', [], dyn.map((c) => `<div class="nav-item small" title="Collection dynamique gérée par Steam" style="opacity:.6;cursor:default"><span class="label">${esc(c.name)}</span></div>`).join('')) : '',
   ].join('');
 
   const twoWeeks = all.reduce((s, g) => s + (g.playtime2wks || 0), 0);

@@ -4,14 +4,15 @@ Fork macOS de [jclementc/CLRE-Launcher](https://github.com/jclementc/CLRE-Launch
 Objectif : un launcher unique sur macOS, puis une version Steam Deck. Windows reste la
 référence : la couche plateforme ne doit rien changer à son comportement.
 
-Dernière mise à jour : 2026-11-18 · version `2026.11.4`.
+Dernière mise à jour : 2026-11-18 · version `2026.11.5`.
 
 ## État actuel
 
 | Chantier | État | Détail |
 |---|---|---|
 | Démarrage de l'app sur macOS | ✅ | fenêtre, tray, thèmes, protocoles, 105 handlers IPC |
-| Steam | ✅ | 709 jeux lus sur la machine de test, compte, collections, succès, lancement |
+| Steam | ✅ | 709 jeux lus sur la machine de test, compte, succès, lancement |
+| Statuts / collections Steam | ✅ | écrits dans les collections de l'utilisateur (▶️ PLAYING, ✅ DONE…), file d'attente si Steam est ouvert |
 | Epic Games Launcher | ✅ | 140 jeux Mac possédés, manifestes, lancement |
 | GOG Galaxy | ✅ | bundles `.app` reconnus par `goggame-<id>.info` |
 | Heroic (Epic/GOG/Amazon) | ✅ | `installed.json` de Legendary/gogdl/Nile + bibliothèques possédées ; Mac natif ou Wine |
@@ -54,6 +55,15 @@ Légende : ✅ fonctionne · 🟡 partiel ou à valider à l'écran · ❌ absen
       (droits root) ou `Metal HUD` — à décider.
 - [ ] **Réticule** : géométrie de fenêtre via `CGWindowListCopyWindowInfo` (petit helper
       Swift) ou `System Events` (permission Accessibilité).
+- [x] **Statuts et collections Steam** : lecture/écriture dans les collections de
+      l'utilisateur, détection `PLAYING`/`Play next`/`DONE`/`Discarded`, sauvegarde et
+      version incrémentée, file d'attente quand Steam tourne.
+- [ ] **Associer un statut à une autre collection** dans les réglages (aujourd'hui
+      détection par nom, sans interface de choix).
+- [ ] **Écrire sans fermer Steam** : proposer « Fermer Steam et appliquer » depuis le
+      launcher, plutôt que d'attendre sa fermeture.
+- [ ] **Jeux non-Steam dans les collections Steam** : créer des raccourcis Steam
+      (`shortcuts.vdf`) pour qu'Epic/GOG/itch puissent entrer dans une collection Steam.
 - [ ] **Raccourci Bureau** : alias Finder ou petit `.app` généré par `osacompile`.
 - [x] **Heroic** : lecture des manifestes Legendary/gogdl/Nile, builds Mac natifs et
       builds Windows lancés par `heroic://launch`.

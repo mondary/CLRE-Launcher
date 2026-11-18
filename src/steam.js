@@ -169,17 +169,20 @@ function libraryFolders(steamPath) {
 }
 
 function readSteamCollections(steamPath, accountId) {
-  const file = path.join(steamPath, 'userdata', accountId, 'config', 'cloudstorage', 'cloud-storage-namespace-1.json');
-  const result = { favorites: new Set(), hidden: new Set(), collections: [] };
+  const file = require('./steam-collections').namespaceFile(steamPath, accountId);
+  const result = { favorites: new Set(), hidden: new Set(), collections: [], dynamic: [] };
   let data;
   try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return result; }
   for (const [key, entry] of data) {
     if (!key.startsWith('user-collections.') || entry.is_deleted || !entry.value) continue;
     let v; try { v = JSON.parse(entry.value); } catch { continue; }
     const added = (v.added || []).map(Number);
-    if (v.id === 'favorite') added.forEach((a) => result.favorites.add(a));
-    else if (v.id === 'hidden') added.forEach((a) => result.hidden.add(a));
-    else if (!v.filterSpec) result.collections.push({ id: v.id, name: v.name, apps: added });
+    const removed = (v.removed || []).map(Number);
+    const apps = added.filter((a) => !removed.includes(a));
+    if (v.id === 'favorite') apps.forEach((a) => result.favorites.add(a));
+    else if (v.id === 'hidden') apps.forEach((a) => result.hidden.add(a));
+    else if (v.filterSpec) result.dynamic.push({ id: v.id, name: v.name, dynamic: true });
+    else result.collections.push({ id: v.id, name: v.name, apps });
   }
   return result;
 }
@@ -310,14 +313,20 @@ async function loadLibrary({ apiKey, steamId: forcedId, fresh } = {}) {
     users: users.map((u) => ({ name: u.name, id64: u.id64 })),
     games: list,
     collections: coll.collections
-      .map((c) => ({ id: c.id, name: c.name, apps: c.apps.filter((id) => list.some((g) => g.appid === id)).map(String) }))
-      .filter((c) => c.apps.length),
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        appids: c.apps,
+        apps: c.apps.filter((id) => list.some((g) => g.appid === id)).map(String),
+      })),
+    dynamicCollections: coll.dynamic,
     runningAppId: platform.steamRunningAppIdSync(),
     syncedAt: Date.now(),
     apiError,
     watchPaths: [
       ...libraryFolders(steamPath).map((f) => path.join(f, 'steamapps')),
       path.join(steamPath, 'userdata', user.accountId, 'config'),
+      path.join(steamPath, 'userdata', user.accountId, 'config', 'cloudstorage'),
     ],
   };
 }

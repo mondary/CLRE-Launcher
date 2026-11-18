@@ -502,7 +502,6 @@ function viewGame() {
   if (!g) return emptyBox('Jeu introuvable', 'Il a peut-être été retiré de ta bibliothèque');
   const year = g.releaseDate ? new Date(g.releaseDate * 1000).getFullYear() : '';
   const kicker = [g.developer, year].filter(Boolean).join(' · ');
-  const collections = (state.lib.collections || []).filter((c) => c.apps.includes(g.key));
   const controller = { full: 'Prise en charge complète', partial: 'Prise en charge partielle' }[g.controller] || 'Non indiquée';
   const fav = isFav(g);
   return `
@@ -558,7 +557,6 @@ function viewGame() {
           ${[['Développeur', g.developer || '—'], ['Éditeur', g.publisher || '—'], ['Sortie', g.releaseDate ? new Date(g.releaseDate * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'], ['Manette', controller], ['Emplacement', g.installed ? g.library : 'Non installé'], ['Plateforme', storeOf(g)], ...(g.store === 'steam' ? [['AppID', g.appid]] : g.store === 'epic' ? [['AppName', g.appName]] : g.exe ? [['Programme', g.exe]] : [])]
             .map(([k, v], i) => `${i ? '<div class="sep"></div>' : ''}<div class="kv"><span>${k}</span><span title="${esc(v)}">${esc(v)}</span></div>`).join('')}
         </section>
-        ${collections.length ? `<section class="panel"><h2>Dans tes collections</h2>${collections.map((c) => `<button type="button" class="nav-item small" data-nav="collection" data-id="${esc(c.id)}"><span class="label">${esc(c.name)}</span><span class="count">${c.apps.length}</span></button>`).join('')}</section>` : ''}
       </aside>
     </div>`;
 }
@@ -666,6 +664,8 @@ async function syncOnce(silent) {
   $('#sync-btn').classList.add('spinning');
   try {
     state.lib = await api.library(!silent); // bouton « Synchroniser » : liste Steam redemandée, sans cache
+    // Les libellés de statut sont les noms de tes collections Steam (▶️ PLAYING, ✅ DONE…).
+    if (state.lib.statusLabels) Object.assign(STATUSES, state.lib.statusLabels);
     state.error = null;
     state.running = state.lib.running || [];
     state.home.spotPool = [];
@@ -869,7 +869,6 @@ api.onRunningChanged((keys) => {
   // Anciennes versions : favoris stockés en nombres
   state.local.favAdd = (state.local.favAdd || []).map(String);
   state.local.favRemove = (state.local.favRemove || []).map(String);
-  state.local.status = state.local.status || {};
   state.local.notes = state.local.notes || {};
   sync(true);
 })();

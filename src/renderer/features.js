@@ -16,10 +16,9 @@ Object.assign(ICONS, {
 const STATUSES = { todo: 'À faire', playing: 'En cours', done: 'Terminé', dropped: 'Abandonné' };
 state.cache = { news: {}, ach: {}, shots: {} };
 state.downloads = [];
-state.local.status = state.local.status || {};
 state.local.notes = state.local.notes || {};
 
-const statusOf = (g) => (state.local.status || {})[g.key] || '';
+const statusOf = (g) => g.status || '';
 // Les mises à jour seulement prévues par Steam ne s'affichent pas sur les jaquettes
 const dlOf = (g) => state.downloads.find((d) => d.key === g.key && d.phase !== 'scheduled');
 const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
@@ -48,7 +47,7 @@ function sidebarExtras(all) {
 function sidebarProgress(all) {
   const r = state.route;
   const counts = Object.fromEntries(Object.keys(STATUSES).map((s) => [s, all.filter((g) => statusOf(g) === s).length]));
-  return `<p class="nav-title">Progression</p>` + Object.entries(STATUSES).map(([id, label]) =>
+  return `<p class="nav-title">Statut</p>` + Object.entries(STATUSES).map(([id, label]) =>
     `<button type="button" class="nav-item small ${r.view === 'status' && r.id === id ? 'active' : ''}" data-nav="status" data-id="${id}"><span class="dot status-${id}"></span><span class="label">${label}</span><span class="count">${counts[id] || ''}</span></button>`).join('');
 }
 
@@ -280,16 +279,25 @@ const STATUS_UI = {
 };
 const NOTE_ICON = SI('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>');
 function progressPanel(g) {
+  // Les statuts et les collections sont ceux de Steam : un jeu d'un autre store ne peut pas y entrer.
+  if (g.store !== 'steam') return '';
   const cur = statusOf(g);
+  const cols = myCollections();
+  const inColl = new Set(cols.filter((c) => c.keys.includes(g.key)).map((c) => c.id));
   const note = (state.local.notes || {})[g.key] || '';
   return `<section class="panel progress-panel">
-    <div class="section-head"><h2>Progression</h2>${cur ? `<button type="button" class="link-btn" data-status="${cur}" data-id="${g.key}" title="Retirer le statut">Retirer</button>` : ''}</div>
+    <div class="section-head"><h2>Statut et collections Steam</h2>${cur ? `<button type="button" class="link-btn" data-status="${cur}" data-id="${g.key}" title="Retirer le statut">Retirer</button>` : ''}</div>
     <div class="status-picker" role="radiogroup" aria-label="Statut du jeu">${Object.entries(STATUSES).map(([id, l]) => {
       const ui = STATUS_UI[id] || { icon: '', hint: '' };
       return `<button type="button" role="radio" aria-checked="${cur === id}" class="status-opt status-${id} ${cur === id ? 'on' : ''}" data-status="${id}" data-id="${g.key}" title="${esc(ui.hint)}">
         <span class="ic">${ui.icon}</span><span class="tx"><span class="l">${esc(l)}</span><span class="h">${esc(ui.hint)}</span></span>
       </button>`;
     }).join('')}</div>
+    ${(state.lib && state.lib.steamRunning) ? '<p class="small">Steam est ouvert : les changements seront écrits dans tes collections Steam à sa fermeture.</p>' : ''}
+    ${cols.length ? `<div class="coll-picker">
+      <p class="nav-title">Collections Steam</p>
+      ${cols.map((c) => `<label class="check"><input type="checkbox" data-coll-toggle="${esc(c.id)}" data-key="${esc(g.key)}" ${inColl.has(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}
+    </div>` : ''}
     <label class="note-field">
       <span class="note-head"><span class="note-title">${NOTE_ICON}Note perso</span><span class="note-state" aria-live="polite">${note ? 'Enregistrée' : ''}</span></span>
       <textarea class="note-input" data-note="${g.key}" rows="3" placeholder="Où tu en es, ce qu’il te reste à faire">${esc(note)}</textarea>
@@ -447,16 +455,29 @@ document.addEventListener('click', (e) => {
   if (t.dataset.tab) { state.route = { ...state.route, tab: t.dataset.tab }; render({ quiet: true }); return; }
   if (t.dataset.status) {
     const k = t.dataset.id;
-    state.local.status = { ...state.local.status };
-    if (state.local.status[k] === t.dataset.status) delete state.local.status[k]; else state.local.status[k] = t.dataset.status;
-    saveLocal();
+    const g = byId(k);
+    if (!g) return;
+    if (g.store !== 'steam') { toast('Les statuts sont des collections Steam : réservé aux jeux Steam'); return; }
+    const next = g.status === t.dataset.status ? '' : t.dataset.status;
+    g.status = next;
     render({ quiet: true });
+    api.setSteamStatus(k, next).then((r) => {
+      if (r && r.queued) toast('Statut enregistré — écriture dans Steam à sa fermeture');
+      else if (r && r.error) toast(r.error);
+    }).catch((e) => toast(String((e && e.message) || e)));
     return;
   }
   if (t.dataset.shot) { api.openScreenshot(t.dataset.shot); return; }
   const url = t.dataset.url || t.dataset.steam;
   if (url) api.openUrl(url).then((ok) => { if (ok === false) toast('Ce lien ne peut pas être ouvert'); });
 }, true);
+
+// Collections Steam : les cases de la fiche écrivent dans Steam (ou en attente).
+document.addEventListener('change', (e) => {
+  const t = e.target.closest('[data-coll-toggle]');
+  if (!t) return;
+  toggleInCollection(t.dataset.collToggle, t.dataset.key);
+});
 
 let noteTimer;
 document.addEventListener('input', (e) => {

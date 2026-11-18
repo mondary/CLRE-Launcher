@@ -53,6 +53,37 @@ Deux différences :
 - le client n'est pas un `.exe` mais `Steam.app` ; on lance toujours par URI
   (`steam://rungameid/<id>`), jamais le binaire interne.
 
+### Collections Steam (écriture)
+Les statuts et les collections du launcher **sont** les collections Steam de l'utilisateur :
+
+```
+~/Library/Application Support/Steam/userdata/<compte>/config/cloudstorage/
+├── cloud-storage-namespaces.json        [[1,"3495"],[3,"0"],…]  (table des namespaces)
+└── cloud-storage-namespace-<n>.json     [ [clé, { value, version, timestamp, … }], … ]
+```
+
+`value` est un JSON `{ id, name, added:[appid], removed:[appid], filterSpec? }`. Une
+collection **dynamique** (`filterSpec`) est fabriquée par Steam : elle est lue, jamais
+écrite. Les collections statiques sont modifiées en ajoutant/retirant l'appid dans `added`
+et en posant un tombstone dans `removed`.
+
+Règles d'écriture (`src/steam-collections.js`) :
+
+1. **Steam doit être fermé** (`SteamPID` dans `registry.vdf`, puis `ps`/`tasklist`).
+   Sinon les changements vont dans `prefs.steamPending` et sont appliqués à la fermeture.
+2. Sauvegarde horodatée dans `~/Library/Application Support/launcher/steam-collections/`
+   (10 dernières), avant toute écriture.
+3. Version de l'entrée = max du fichier + 1, timestamp courant, `conflictResolutionMethod`
+   `custom` / `strMethodId` `union-collections` (même forme que Steam ROM Manager/DeckDex).
+4. Écriture atomique (tmp + rename), relecture JSON de contrôle ; en cas d'échec, la
+   sauvegarde est restaurée et la file d'attente est conservée.
+5. À la lecture, `apps = added − removed`.
+
+Les quatre statuts sont **détectés par nom** dans les collections statiques :
+`playing` (PLAYING, En cours), `todo` (Play next, À faire, backlog), `done` (DONE, Terminé,
+finished), `dropped` (Discarded, Abandonné). L'association est enregistrée dans
+`prefs.steamStatusMap` ; si une collection est supprimée, elle est re-détectée.
+
 ### Epic
 Le cache est dans `~/Library/Application Support/Epic/EpicGamesLauncher/Data`, avec la
 même structure que `ProgramData\Epic\...` : `Catalog/catcache.bin` (JSON en base64) et

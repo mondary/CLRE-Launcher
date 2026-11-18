@@ -13,6 +13,7 @@ const DISCORD_APP_ID = '1568079866841137202';
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const platform = require('./platform');
 const { loadLibrary } = require('./steam');
@@ -26,6 +27,7 @@ const store = require('./store');
 const { workshopMods } = require('./workshop');
 const { Saves } = require('./saves');
 const sys = require('./system');
+const steamCollections = require('./steam-collections');
 const { Themes } = require('./themes');
 
 // Le nom d'app a changé (Launcher → CLRE-Launcher) : on garde l'ancien dossier de données
@@ -185,6 +187,111 @@ function dedupeStores(all) {
   });
 }
 
+// ---------- Collections Steam ----------
+// Le launcher n'a pas de collections à lui : les statuts et les collections sont celles de
+// Steam. Une modification est écrite dans cloud-storage-namespace-<n>.json, ou mise en
+// attente si Steam tourne (Steam réécrirait le fichier).
+function ensureSteamStatusMap(libObj, prefs) {
+  const ids = new Set((libObj.collections || []).map((c) => c.id));
+  const current = prefs.steamStatusMap || {};
+  const detected = steamCollections.detectStatusMap(libObj.collections || []);
+  const next = { todo: null, playing: null, done: null, dropped: null, ...current };
+  let changed = false;
+  for (const s of ['todo', 'playing', 'done', 'dropped']) {
+    const id = next[s];
+    if (id && ids.has(id)) continue; // association valide : on n'y touche pas
+    // Collection supprimée ou jamais associée : on reprend la détection par nom.
+    next[s] = detected[s] || null;
+    if (next[s] !== id) changed = true;
+  }
+  if (!prefs.steamStatusMap || changed) {
+    prefs.steamStatusMap = next;
+    writePrefs(prefs);
+  }
+  return next;
+}
+
+const steamPending = () => readPrefs().steamPending || {};
+const pendingSteamCount = () => Object.keys(steamPending()).length;
+const steamRunning = () => !!(lib && lib.steamPath && steamCollections.isSteamRunning(lib.steamPath));
+
+function newCollectionId() {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*+';
+  return 'uc-' + Array.from(crypto.randomBytes(12)).map((b) => alphabet[b % alphabet.length]).join('');
+}
+
+// Fusionne des intentions (ajouter/retirer un appid) dans la file d'attente, puis tente
+// de les écrire. Si Steam tourne, elles restent en attente et partiront à sa fermeture.
+function queueSteamOps(ops) {
+  const p = readPrefs();
+  const q = p.steamPending || {};
+  for (const op of ops || []) {
+    if (!op || !op.id) continue;
+    const cur = q[op.id] || { id: op.id, add: [], remove: [], create: false, name: '', delete: false };
+    cur.add = (cur.add || []).map(Number);
+    cur.remove = (cur.remove || []).map(Number);
+    for (const a of (op.add || []).map(Number).filter(Number.isFinite)) {
+      cur.add = [...new Set([...cur.add.filter((x) => x !== a), a])];
+      cur.remove = cur.remove.filter((x) => x !== a);
+    }
+    for (const a of (op.remove || []).map(Number).filter(Number.isFinite)) {
+      cur.remove = [...new Set([...cur.remove.filter((x) => x !== a), a])];
+      cur.add = cur.add.filter((x) => x !== a);
+    }
+    if (op.create) cur.create = true;
+    if (op.name) cur.name = op.name;
+    if (op.delete) cur.delete = true;
+    q[op.id] = cur;
+  }
+  p.steamPending = q;
+  writePrefs(p);
+  return flushSteamPending();
+}
+
+// Applique les changements en attente à la liste lue sur le disque : l'interface montre
+// l'état voulu même quand Steam est ouvert (le fichier, lui, n'est pas encore écrit).
+function applyPendingToCollections(libObj, pending, libraryKeys) {
+  const q = pending || {};
+  const byId = new Map((libObj.collections || []).map((c) => [c.id, c]));
+  for (const [id, op] of Object.entries(q)) {
+    if (!op) continue;
+    if (op.delete) {
+      libObj.collections = (libObj.collections || []).filter((c) => c.id !== id);
+      byId.delete(id);
+      continue;
+    }
+    let c = byId.get(id);
+    if (!c && op.create) {
+      c = { id, name: op.name || id, appids: [], apps: [] };
+      libObj.collections = [...(libObj.collections || []), c];
+      byId.set(id, c);
+    }
+    if (!c) continue;
+    if (op.name) c.name = op.name;
+    for (const a of op.add || []) c.appids = [...new Set([...(c.appids || []), Number(a)])];
+    for (const a of op.remove || []) c.appids = (c.appids || []).filter((x) => x !== Number(a));
+    c.apps = c.appids.map(String).filter((k) => libraryKeys.has(k));
+  }
+}
+
+function flushSteamPending() {  const p = readPrefs();
+  const q = p.steamPending || {};
+  const ids = Object.keys(q);
+  if (!ids.length) return { ok: true, pending: 0 };
+  if (!lib || !lib.steamPath || !lib.user || !lib.user.accountId) return { error: 'Steam introuvable', pending: ids.length };
+  if (steamRunning()) return { queued: true, pending: ids.length };
+  try {
+    const res = steamCollections.apply(lib.steamPath, lib.user.accountId, ids.map((id) => q[id]), { backupDir: dataFile('steam-collections') });
+    p.steamPending = {};
+    writePrefs(p);
+    if (win) win.webContents.send('library-changed');
+    return { ok: true, changed: res.changed, pending: 0 };
+  } catch (e) {
+    return { error: e.message, code: e.code, pending: ids.length };
+  }
+}
+
+
 // ---------- Synchronisation de toutes les plateformes ----------
 async function sync(fresh) {
   const prefs = readPrefs();
@@ -248,6 +355,20 @@ async function sync(fresh) {
 
   const all = dedupeStores([...lib.games, ...epic.games, ...others]);
   if (steamError && !all.length) throw new Error(steamError);
+  // Les changements en attente (Steam ouvert) sont reflétés dans l'interface.
+  applyPendingToCollections(lib, prefs.steamPending, new Set(all.map((g) => g.key)));
+  // Statuts : lus dans les collections Steam de l'utilisateur, jamais dans un champ local.
+  const statusMap = ensureSteamStatusMap(lib, prefs);
+  for (const g of all) g.status = g.store === 'steam' ? steamCollections.statusForApp(lib.collections || [], statusMap, g.appid) : '';
+  lib.statusMap = statusMap;
+  lib.statusLabels = Object.fromEntries(Object.entries(statusMap).filter(([, id]) => id)
+    .map(([s, id]) => [s, ((lib.collections || []).find((c) => c.id === id) || {}).name || s]));
+  lib.dynamicCollections = lib.dynamicCollections || [];
+  lib.steamPending = pendingSteamCount();
+  lib.steamRunning = steamRunning();
+  // Des changements ont été mis en attente pendant que Steam tournait : on tente l'écriture
+  // dès que Steam est fermé (au démarrage, ou quand il vient de quitter).
+  if (lib.steamPending && !lib.steamRunning) setTimeout(() => flushSteamPending(), 500);
   // Jaquettes choisies à la main
   const covers = prefs.coverOverrides || {};
   for (const g of all) if (covers[g.key]) { g.art = { ...g.art, cover: covers[g.key] }; g.coverCustom = true; }
@@ -931,6 +1052,95 @@ app.whenReady().then(() => {
   let syncing = null;
   ipcMain.handle('library', (_e, fresh) => syncing || (syncing = sync(fresh === true).finally(() => { syncing = null; })));
   for (const kind of ['play', 'install', 'uninstall', 'store', 'details']) ipcMain.handle(kind, (_e, key) => action(key, kind));
+
+  // ---------- Collections Steam (statuts et collections de l'utilisateur) ----------
+  const setLocalMembership = (id, appid, on) => {
+    const c = (lib.collections || []).find((x) => x.id === id);
+    if (!c) return;
+    if (on) {
+      c.appids = [...new Set([...(c.appids || []), appid])];
+      c.apps = [...new Set([...(c.apps || []), String(appid)])];
+    } else {
+      c.appids = (c.appids || []).filter((a) => a !== appid);
+      c.apps = (c.apps || []).filter((a) => a !== String(appid));
+    }
+  };
+  ipcMain.handle('steam:state', () => ({
+    running: steamRunning(),
+    pending: pendingSteamCount(),
+    map: readPrefs().steamStatusMap || {},
+    labels: (lib && lib.statusLabels) || {},
+  }));
+  ipcMain.handle('steam:set-status', (_e, key, status) => {
+    const g = games.get(String(key));
+    if (!g) throw new Error('Jeu introuvable');
+    if (g.store !== 'steam') throw new Error('Seuls les jeux Steam peuvent être classés dans les collections Steam');
+    const map = readPrefs().steamStatusMap || {};
+    const target = status ? map[status] : null;
+    if (status && !target) throw new Error('Aucune collection Steam associée à ce statut');
+    const appid = Number(g.appid);
+    const ops = Object.entries(map).filter(([, id]) => id)
+      .map(([, id]) => (id === target ? { id, add: [appid] } : { id, remove: [appid] }));
+    const res = queueSteamOps(ops);
+    if (target) setLocalMembership(target, appid, true);
+    for (const id of Object.values(map)) if (id && id !== target) setLocalMembership(id, appid, false);
+    g.status = status || '';
+    return res;
+  });
+  ipcMain.handle('steam:toggle-collection', (_e, id, key, on) => {
+    const g = games.get(String(key));
+    if (!g) throw new Error('Jeu introuvable');
+    if (g.store !== 'steam') throw new Error('Steam ne peut pas ranger les jeux d’un autre store');
+    const c = (lib.collections || []).find((x) => x.id === String(id));
+    if (!c) throw new Error('Collection introuvable');
+    const appid = Number(g.appid);
+    const res = queueSteamOps([{ id: c.id, [on ? 'add' : 'remove']: [appid] }]);
+    setLocalMembership(c.id, appid, !!on);
+    return res;
+  });
+  ipcMain.handle('steam:create-collection', (_e, name) => {
+    name = String(name || '').trim().slice(0, 80);
+    if (!name) throw new Error('Nom de collection vide');
+    const id = newCollectionId();
+    const res = queueSteamOps([{ id, name, create: true }]);
+    lib.collections = [...(lib.collections || []), { id, name, appids: [], apps: [] }];
+    return { ...res, id, name };
+  });
+  ipcMain.handle('steam:rename-collection', (_e, id, name) => {
+    const c = (lib.collections || []).find((x) => x.id === String(id));
+    if (!c) throw new Error('Collection introuvable');
+    name = String(name || '').trim().slice(0, 80);
+    if (!name) throw new Error('Nom de collection vide');
+    c.name = name;
+    return queueSteamOps([{ id: c.id, name }]);
+  });
+  ipcMain.handle('steam:delete-collection', (_e, id) => {
+    const c = (lib.collections || []).find((x) => x.id === String(id));
+    if (!c) throw new Error('Collection introuvable');
+    lib.collections = (lib.collections || []).filter((x) => x.id !== c.id);
+    return queueSteamOps([{ id: c.id, delete: true }]);
+  });
+  ipcMain.handle('steam:apply', () => flushSteamPending());
+  ipcMain.handle('steam:set-status-map', (_e, map) => {
+    const allowed = new Set((lib.collections || []).map((c) => c.id));
+    const clean = {};
+    for (const s of ['todo', 'playing', 'done', 'dropped']) {
+      const id = map && map[s];
+      clean[s] = id && allowed.has(String(id)) ? String(id) : null;
+    }
+    const p = readPrefs();
+    p.steamStatusMap = clean;
+    writePrefs(p);
+    if (lib) {
+      for (const g of games.values()) if (g.store === 'steam') g.status = steamCollections.statusForApp(lib.collections, clean, g.appid);
+      lib.statusMap = clean;
+      lib.statusLabels = Object.fromEntries(Object.entries(clean).filter(([, id]) => id)
+        .map(([s, id]) => [s, ((lib.collections || []).find((c) => c.id === id) || {}).name || s]));
+    }
+    if (win) win.webContents.send('library-changed');
+    return clean;
+  });
+
   ipcMain.handle('open-store-home', () => shell.openExternal('steam://store'));
   ipcMain.handle('open-friends', () => shell.openExternal('steam://open/friends'));
   // Liens web (actus, Epic, HowLongToBeat, sites officiels) et liens steam://.
@@ -1393,8 +1603,10 @@ app.whenReady().then(() => {
   setTimeout(checkPromos, 60e3);
   setInterval(checkPromos, 6 * 3600e3);
   setInterval(checkFriends, 3 * 60e3);
+  // Collections Steam : les changements en attente partent dès que Steam est fermé.
+  setInterval(() => { if (pendingSteamCount() && !steamRunning()) flushSteamPending(); }, 30e3);
   if (process.env.LAUNCHER_SNAP && !app.isPackaged) require('./dev-snap')(win, process.env.LAUNCHER_SNAP);
 });
 
-app.on('will-quit', () => { if (sessions && sessions.open.size) sessions.save(); globalShortcut.unregisterAll(); overlay.destroy(); crosshair.destroy(); if (perf) perf.stopAll(); });
+app.on('will-quit', () => { if (pendingSteamCount() && !steamRunning()) flushSteamPending(); if (sessions && sessions.open.size) sessions.save(); globalShortcut.unregisterAll(); overlay.destroy(); crosshair.destroy(); if (perf) perf.stopAll(); });
 app.on('window-all-closed', () => { if (quitting) app.quit(); });
