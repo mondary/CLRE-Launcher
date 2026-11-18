@@ -497,7 +497,7 @@ let heroicMerged = new Set();
 let epicEglAvailable = false;
 function loadEpic(stats) {
   const egl = require('../epic').loadEpic(stats, { dataDir: epicDataDir, platform: 'mac' });
-  epicEglAvailable = !!egl.available;
+  epicEglAvailable = !!(egl.available && egl.games.length);
   heroicMerged = new Set();
   for (const h of loadHeroic().epic) {
     // Le cache Epic et Legendary ne nomment pas toujours l'app pareil : on retombe sur le titre.
