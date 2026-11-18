@@ -4,8 +4,7 @@
 // ajoute les jeux possédés jamais lancés sur ce PC.
 const fs = require('fs');
 const path = require('path');
-const { execFile, execFileSync } = require('child_process');
-const { regQuery } = require('./reg');
+const platform = require('./platform');
 
 // ---------- VDF texte ----------
 function parseVdf(text) {
@@ -123,34 +122,7 @@ function parseAppInfoBuf(buf, wanted, out) {
 let steamPathCache = null;
 function findSteamPath() {
   if (steamPathCache && fs.existsSync(path.join(steamPathCache, 'steamapps'))) return steamPathCache;
-  return (steamPathCache = locateSteam());
-}
-function locateSteam() {
-  try {
-    const out = regQuery('HKCU\\Software\\Valve\\Steam', ['/v', 'SteamPath']);
-    const m = out.match(/SteamPath\s+REG_SZ\s+(.+)/);
-    if (m) return path.normalize(m[1].trim());
-  } catch { /* pas de registre */ }
-  for (const p of ['C:\\Program Files (x86)\\Steam', 'C:\\Program Files\\Steam']) if (fs.existsSync(p)) return p;
-  return null;
-}
-
-function regDword(name) {
-  try {
-    const out = execFileSync('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', name], { encoding: 'utf8', windowsHide: true });
-    const m = out.match(/REG_DWORD\s+0x([0-9a-f]+)/i);
-    return m ? parseInt(m[1], 16) : 0;
-  } catch { return 0; }
-}
-
-// Même lecture, sans bloquer le processus principal (relevé toutes les 5 s).
-function regDwordAsync(name) {
-  return new Promise((resolve) => {
-    execFile('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', name], { encoding: 'utf8', windowsHide: true, timeout: 4000 }, (err, out) => {
-      const m = !err && /REG_DWORD\s+0x([0-9a-f]+)/i.exec(out || '');
-      resolve(m ? parseInt(m[1], 16) : 0);
-    });
-  });
+  return (steamPathCache = platform.steamPath());
 }
 
 const STEAM64_BASE = 76561197960265728n;
@@ -340,7 +312,7 @@ async function loadLibrary({ apiKey, steamId: forcedId, fresh } = {}) {
     collections: coll.collections
       .map((c) => ({ id: c.id, name: c.name, apps: c.apps.filter((id) => list.some((g) => g.appid === id)).map(String) }))
       .filter((c) => c.apps.length),
-    runningAppId: regDword('RunningAppID'),
+    runningAppId: platform.steamRunningAppIdSync(),
     syncedAt: Date.now(),
     apiError,
     watchPaths: [
@@ -382,4 +354,4 @@ function artFor(steamPath, appid) {
   return art;
 }
 
-module.exports = { loadLibrary, findSteamPath, parseVdf, parseAppInfo, regDword, regDwordAsync, readVdf, get, libraryFolders };
+module.exports = { loadLibrary, findSteamPath, parseVdf, parseAppInfo, readVdf, get, libraryFolders };

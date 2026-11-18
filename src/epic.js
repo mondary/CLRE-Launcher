@@ -10,9 +10,9 @@ const BAD_CATEGORIES = /^(addons|testing|hidden|engines|software|assets|plugins|
 
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }
 
-function readCatalog() {
+function readCatalog(dataDir) {
   try {
-    const raw = fs.readFileSync(path.join(DATA, 'Catalog', 'catcache.bin'), 'utf8');
+    const raw = fs.readFileSync(path.join(dataDir, 'Catalog', 'catcache.bin'), 'utf8');
     const items = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
     return Array.isArray(items) ? items : [];
   } catch { return []; }
@@ -26,25 +26,27 @@ const img = (item, ...types) => {
   return '';
 };
 
-function loadEpic(stats = {}) {
-  if (!fs.existsSync(DATA)) return { available: false, games: [] };
+function loadEpic(stats = {}, opts = {}) {
+  const dataDir = opts.dataDir || DATA;
+  const wantMac = opts.platform === 'mac';
+  if (!fs.existsSync(dataDir)) return { available: false, games: [] };
 
   const installed = new Map(); // catalogItemId -> manifest
   let manifests = [];
-  try { manifests = fs.readdirSync(path.join(DATA, 'Manifests')).filter((f) => f.endsWith('.item')); } catch { /* aucun */ }
+  try { manifests = fs.readdirSync(path.join(dataDir, 'Manifests')).filter((f) => f.endsWith('.item')); } catch { /* aucun */ }
   for (const f of manifests) {
-    const m = readJson(path.join(DATA, 'Manifests', f));
+    const m = readJson(path.join(dataDir, 'Manifests', f));
     if (!m || m.bIsIncompleteInstall || m.MainGameAppName && m.MainGameAppName !== m.AppName) continue;
     if (!(m.AppCategories || []).includes('games')) continue;
     installed.set(m.CatalogItemId, m);
   }
 
   const games = new Map();
-  for (const item of readCatalog()) {
+  for (const item of readCatalog(dataDir)) {
     const cats = (item.categories || []).map((c) => c.path);
     if (!cats.includes('games') || cats.some((c) => BAD_CATEGORIES.test(c))) continue;
     if (item.mainGameItem && item.mainGameItem.id) continue; // DLC
-    const rel = (item.releaseInfo || []).find((r) => (r.platform || []).some((p) => /^win/i.test(p)));
+    const rel = (item.releaseInfo || []).find((r) => (r.platform || []).some((p) => (wantMac ? /^mac/i.test(p) : /^win/i.test(p))));
     if (!rel) continue;
     const m = installed.get(item.id);
     const appName = m ? m.AppName : rel.appId;

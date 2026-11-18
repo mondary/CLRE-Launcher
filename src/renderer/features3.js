@@ -276,7 +276,9 @@ function sparkline(vals, max, cls) {
 function perfHtml(g) {
   const list = load('perf', g.key, () => api.perf(g.key));
   if (list === 'loading') return loading();
-  const hint = `<p class="small">Mesuré pendant chaque partie lancée avec le launcher ouvert : processeur, carte graphique, mémoire vidéo et RAM. ${settings3().presentMon ? 'Les FPS viennent de PresentMon.' : 'Pour les FPS, indique PresentMon dans les réglages.'} Les températures s’affichent si LibreHardwareMonitor tourne.</p>`;
+  const hint = api.platform === 'darwin'
+    ? '<p class="small">La mesure des performances pendant une partie n’est pas encore disponible sur macOS.</p>'
+    : `<p class="small">Mesuré pendant chaque partie lancée avec le launcher ouvert : processeur, carte graphique, mémoire vidéo et RAM. ${settings3().presentMon ? 'Les FPS viennent de PresentMon.' : 'Pour les FPS, indique PresentMon dans les réglages.'} Les températures s’affichent si LibreHardwareMonitor tourne.</p>`;
   if (!Array.isArray(list) || !list.length) return emptyBox('Pas encore de mesure', 'Lance une partie : le launcher relève les performances toutes les 5 secondes et les affiche ici à la fin') + hint;
   const sel = Math.min(list.length - 1, state.perfSel || 0);
   const p = list[sel];
@@ -354,19 +356,24 @@ const _settingsSystem3 = settingsSystem;
 settingsSystem = function (prefs) {
   state.prefs = prefs;
   const s = prefs.settings || {};
+  const mac = api.platform === 'darwin';
   const cb = (name, on, label) => `<label class="check"><input type="checkbox" name="${name}" ${on ? 'checked' : ''}> ${label}</label>`;
-  return _settingsSystem3(prefs).replace('<fieldset class="field set"><legend>Notifications Windows</legend>', `<fieldset class="field set"><legend>Effets</legend>
+  let html = _settingsSystem3(prefs).replace('<fieldset class="field set"><legend>Notifications</legend>', `<fieldset class="field set"><legend>Effets</legend>
       ${cb('liveBanners', s.liveBanners !== false, 'Bannières vivantes : le trailer prend le relais de l’image')}
       ${cb('gameTint', s.gameTint !== false, 'La couleur de l’interface suit le jeu affiché')}
     </fieldset>
-    <fieldset class="field set"><legend>Notifications Windows</legend>
-      ${cb('n_recaps', (s.notify || {}).recaps !== false, 'Mon récap de la semaine, du mois ou de l’année est prêt')}`)
-    .replace('<fieldset class="field set"><legend>Sauvegardes de jeux</legend>', `<fieldset class="field set"><legend>Performances</legend>
+    <fieldset class="field set"><legend>Notifications</legend>
+      ${cb('n_recaps', (s.notify || {}).recaps !== false, 'Mon récap de la semaine, du mois ou de l’année est prêt')}`);
+  // PresentMon (FPS) est un outil Windows : pas de section Performances sur macOS.
+  if (!mac) {
+    html = html.replace('<fieldset class="field set"><legend>Sauvegardes de jeux</legend>', `<fieldset class="field set"><legend>Performances</legend>
       <div class="pick"><span class="path" id="pm-path">${esc(s.presentMon || 'PresentMon non indiqué (FPS désactivés)')}</span><button type="button" class="btn btn-ghost" data-act="pick-presentmon">Choisir…</button></div>
       <input type="hidden" name="presentMon" value="${esc(s.presentMon || '')}">
       <small>PresentMon est l’outil gratuit d’Intel qui mesure les FPS (github.com/GameTechDev/PresentMon). Il peut demander de lancer le launcher en administrateur. Processeur, carte graphique et RAM sont mesurés sans rien installer</small>
     </fieldset>
     <fieldset class="field set"><legend>Sauvegardes de jeux</legend>`);
+  }
+  return html;
 };
 const _readExtra3 = readExtraSettings;
 // eslint-disable-next-line no-global-assign

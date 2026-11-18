@@ -6,6 +6,11 @@ Il lit directement les fichiers que chaque plateforme garde sur ton PC : pour to
 
 Il sait aussi **installer tes jeux GOG et Epic sans GOG Galaxy ni le Epic Games Launcher**. Là, et seulement là, il faut connecter ton compte GOG ou Epic.
 
+> **Fork macOS** — ce guide décrit la version Windows d'origine. Sur macOS, l'interface et
+> les fiches de jeu sont les mêmes, mais les plateformes détectées et les fonctions
+> disponibles diffèrent : voir [ROADMAP.md](../ROADMAP.md) et
+> [docs/PORTAGE-macOS.md](PORTAGE-macOS.md).
+
 ---
 
 ## Sommaire

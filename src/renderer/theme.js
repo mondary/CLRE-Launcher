@@ -45,3 +45,7 @@ function applyTheme(t) {
 try { applyTheme(window.launcher && window.launcher.themeBoot ? window.launcher.themeBoot() : null); } catch (e) { console.error('thème', e); }
 // Rechargement à chaud : le launcher prévient quand le dossier du thème actif change
 if (window.launcher && window.launcher.onThemeChanged) window.launcher.onThemeChanged((t) => applyTheme(t));
+
+// Plateforme : quelques règles CSS en dépendent (barre de titre macOS, raccourcis affichés).
+document.documentElement.dataset.platform = /Mac/i.test(navigator.userAgent) ? 'darwin'
+  : /Win/i.test(navigator.userAgent) ? 'win32' : 'linux';

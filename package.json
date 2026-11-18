@@ -1,14 +1,17 @@
 {
   "name": "launcher",
   "productName": "CLRE-Launcher",
-  "version": "2.0.0",
+  "version": "2026.11.1",
   "description": "Lanceur de jeux qui synchronise ta bibliothèque Steam",
   "main": "src/main.js",
   "license": "MIT",
   "scripts": {
     "postinstall": "install-electron --no",
     "start": "electron .",
+    "test": "node --test test/",
+    "doctor": "node scripts/mac-doctor.js",
     "dist": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac dmg zip",
     "icons": "electron scripts/build-icons.js"
   },
   "build": {
@@ -28,6 +31,24 @@
       "target": "portable",
       "icon": "assets/icon.ico",
       "signAndEditExecutable": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "icon": "assets/icon-512.png"
     },
     "portable": {
       "artifactName": "CLRE-Launcher.exe"

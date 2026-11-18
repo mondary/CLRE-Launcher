@@ -7,11 +7,34 @@
 **Tous tes jeux, un seul launcher.**
 Steam, Epic, GOG, Ubisoft, EA, Xbox / Game Pass, Battle.net, Riot, Amazon, itch.io et tes propres `.exe`, au même endroit.
 
-Gratuit · Open source (MIT) · Windows · Aucun compte à connecter
+Gratuit · Open source (MIT) · Windows · macOS (fork expérimental) · Aucun compte à connecter
 
 <img src="docs/screens/accueil.jpg" alt="Accueil de CLRE-Launcher">
 
 </div>
+
+> ## Fork macOS (expérimental)
+>
+> Cette copie est un **fork macOS** de [jclementc/CLRE-Launcher](https://github.com/jclementc/CLRE-Launcher),
+> sous licence MIT. Windows reste la référence ; le portage ne change pas son comportement.
+>
+> ```sh
+> npm install
+> npm run doctor   # ce que le launcher trouve sur cette machine
+> npm test         # lecteurs Steam/Epic/GOG sur fixtures
+> npm start        # lancer l'application
+> npm run dist:mac # construire un DMG (arm64, non signé)
+> ```
+>
+> **Fonctionne sur macOS** : Steam (bibliothèque, temps de jeu, succès, collections,
+> lancement), Epic Games Launcher, GOG Galaxy (bundles `.app`), Battle.net, League of
+> Legends, jeux ajoutés à la main (`.app`), temps de jeu hors Steam, présence Discord.
+>
+> **Pas encore** : sauvegardes Ludusavi, réticule, perf CPU/GPU/FPS, raccourci Bureau,
+> mise à jour intégrée, signature/notarisation, installation directe GOG/Epic.
+>
+> Détail et état à jour : [ROADMAP.md](ROADMAP.md) · architecture :
+> [docs/PORTAGE-macOS.md](docs/PORTAGE-macOS.md) · journal : [CHANGELOG.md](CHANGELOG.md).
 
 ## Installer
 
@@ -66,7 +89,10 @@ npm start
 ```
 
 ```bash
-npm run dist
+npm test          # tests Node, sans Electron
+npm run doctor    # diagnostic des sources de jeux sur la machine
+npm run dist      # Windows : dist/CLRE-Launcher.exe
+npm run dist:mac  # macOS : DMG + ZIP arm64 (non signés)
 ```
 
 `npm run dist` construit `dist/CLRE-Launcher.exe`.

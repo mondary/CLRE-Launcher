@@ -44,6 +44,8 @@ function gogConnectBrowser() {
 
 async function gogInstall(g) {
   let st = await api.gogStatus();
+  // Plateforme sans téléchargeur direct (macOS) : on ouvre GOG Galaxy sur la fiche du jeu.
+  if (st.available === false) { toast(st.reason || 'Installation directe indisponible'); return api.install(g.key); }
   if (!st.connected) {
     const ok = await new Promise((resolve) => {
       let picked = false;

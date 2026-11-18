@@ -125,7 +125,7 @@ function openMenu(key, x, y) {
     <div class="ctx-sep"></div>
     ${g.installDir && g.installed ? it('folder', 'Ouvrir le dossier', ICONS.folder) : ''}
     ${it('party-plan', 'Planifier une soirée…')}
-    ${it('shortcut', 'Créer un raccourci sur le Bureau')}
+    ${api.platform === 'darwin' ? '' : it('shortcut', 'Créer un raccourci sur le Bureau')}
     <div class="ctx-sep"></div>
     ${it('hide', (state.local.hidden || []).includes(g.key) ? 'Ne plus masquer' : 'Masquer ce jeu')}`;
   document.body.appendChild(m);

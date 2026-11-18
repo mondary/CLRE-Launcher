@@ -12,14 +12,14 @@ const { Parties, commonGames } = require('./party');
 const DISCORD_APP_ID = '1568079866841137202';
 const path = require('path');
 const fs = require('fs');
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
-const { loadLibrary, regDwordAsync } = require('./steam');
-const { loadEpic, epicUri, makeGame: makeEpicGame, EPIC_DATA } = require('./epic');
+const platform = require('./platform');
+const { loadLibrary } = require('./steam');
+const { epicUri, makeGame: makeEpicGame } = require('./epic');
 const { EpicDl } = require('./epicdl');
-const { loadPlatforms, applyArt, resolveArt, base } = require('./platforms');
+const { applyArt, resolveArt, base } = require('./platforms');
 const { Gog } = require('./gog');
-const { loadMorePlatforms } = require('./platforms2');
 const extras = require('./extras');
 const gameinfo = require('./gameinfo');
 const store = require('./store');
@@ -58,18 +58,18 @@ app.on('session-created', hardenSession);
 // Aucune page du launcher n'utilise <webview>
 app.on('web-contents-created', (_e, wc) => wc.on('will-attach-webview', (e) => e.preventDefault()));
 
-// Fichier local sur un disque (C:\…) : jamais un partage réseau (\\serveur\…), qui enverrait
-// les identifiants Windows à un serveur choisi par quelqu'un d'autre.
-const isLocalFile = (f) => typeof f === 'string' && /^[a-z]:[\\/]/i.test(f) && !f.includes('\0');
+// Fichier local sur un disque. Sous Windows : jamais un partage réseau (\\serveur\…), qui
+// enverrait les identifiants à un serveur choisi par quelqu'un d'autre.
+const isLocalFile = platform.isLocalFile;
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
-const LAUNCH_EXT = new Set(['.exe', '.lnk', '.url', '.bat', '.cmd']);
 const hasExt = (f, set) => set.has(path.extname(String(f)).toLowerCase());
-// Programme choisi par l'utilisateur (jeu ajouté à la main, appli à ouvrir avant un jeu) : chemin complet d'un fichier qui se lance
-const isProgram = (f) => typeof f === 'string' && path.isAbsolute(f) && !f.includes('\0') && hasExt(f, LAUNCH_EXT);
+// Programme choisi par l'utilisateur (jeu ajouté à la main, appli à ouvrir avant un jeu) :
+// .exe/.lnk sous Windows, bundle .app sous macOS.
+const isProgram = platform.isProgram;
 // Nom de fichier proposé dans une boîte « Enregistrer » : sans séparateur ni caractère interdit
 const safeFileName = (s, fallback) => String(s || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/^\.+/, '').slice(0, 80).trim() || fallback;
 // Options de lancement d'un jeu : mêmes règles à l'enregistrement et à l'import d'un fichier de données
-const PROC_RE = /^[\w .()-]+\.exe$/i;
+const PROC_RE = platform.processNameRe;
 function cleanLaunchOpts(o) {
   o = o && typeof o === 'object' ? o : {};
   return {
@@ -123,8 +123,8 @@ const settings = () => {
     discordBrowse: s.discordBrowse !== false,
     updateRepo: s.updateRepo || '',
     backupDir: s.backupDir || path.join(app.getPath('documents'), 'CLRE-Launcher', 'Sauvegardes'),
-    gogDir: s.gogDir || path.join(process.env.SystemDrive || 'C:', '\\', 'GOG Games'),
-    epicDir: s.epicDir || path.join(process.env.SystemDrive || 'C:', '\\', 'Epic Games'),
+    gogDir: s.gogDir || (platform.isWin ? path.join(process.env.SystemDrive || 'C:', '\\', 'GOG Games') : path.join(app.getPath('documents'), 'GOG Games')),
+    epicDir: s.epicDir || (platform.isWin ? path.join(process.env.SystemDrive || 'C:', '\\', 'Epic Games') : path.join(app.getPath('documents'), 'Epic Games')),
     autoBackup: s.autoBackup !== false,
     themeCatalog: s.themeCatalog === undefined ? null : s.themeCatalog, // null = catalogue par défaut
   };
@@ -196,9 +196,9 @@ async function sync(fresh) {
     lib = { steamPath: null, user: { name: '?', id64: null }, users: [], games: [], collections: [], watchPaths: [] };
   }
   const epicStats = readJson('epic-stats.json');
-  const epic = loadEpic(epicStats);
+  const epic = platform.loadEpic(epicStats);
   // Jeux Epic gérés sans le Epic Games Launcher (Legendary) : possédés et installés
-  if (epicDl) {
+  if (epicDl && platform.supports.directDownloads) {
     const byApp = new Map(epic.games.map((g) => [g.appName, g]));
     const owned = epicDl.ownedGames(() => win && win.webContents.send('library-changed'));
     const fromOwned = (o) => makeEpicGame({ id: o.catalogItemId, namespace: o.namespace, title: o.title, developer: o.developer, keyImages: o.keyImages }, null, o.appName, epicStats);
@@ -221,8 +221,8 @@ async function sync(fresh) {
     epicDl.checkUpdates(() => win && win.webContents.send('library-changed'));
   }
   let more = [];
-  try { more = await loadMorePlatforms(); } catch { more = []; }
-  const others = [...loadPlatforms(prefs.customGames || []), ...more];
+  try { more = await platform.loadMorePlatforms(); } catch { more = []; }
+  const others = [...platform.loadPlatforms(prefs.customGames || []), ...more];
   // Jeux GOG possédés mais pas installés (compte GOG connecté dans le launcher)
   if (gog) {
     const have = new Set(others.filter((g) => g.store === 'gog').map((g) => g.platformId));
@@ -265,7 +265,7 @@ async function sync(fresh) {
     for (const g of all) if (g.store === 'steam' && sums[g.appid]) g.ach = sums[g.appid];
   } catch {}
   lib.games = all.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  lib.platforms = ['steam', 'epic', 'gog', 'ubisoft', 'ea', 'xbox', 'battlenet', 'riot', 'amazon', 'itch', 'custom'].map((s) => ({ id: s, count: all.filter((g) => g.store === s).length }));
+  lib.platforms = platform.platformIds.map((s) => ({ id: s, count: all.filter((g) => g.store === s).length }));
   lib.steamError = steamError;
   lib.running = running;
   lib.hasApiKey = !!prefs.apiKey;
@@ -274,7 +274,7 @@ async function sync(fresh) {
   setTimeout(checkDisks, 8000);
 
   const paths = [...lib.watchPaths];
-  if (epic.available) paths.push(path.join(EPIC_DATA, 'Manifests'));
+  if (epic.available) paths.push(path.join(platform.epicDataDir, 'Manifests'));
   watch(paths);
   delete lib.watchPaths;
   updateTray();
@@ -328,42 +328,9 @@ function watch(paths) {
 }
 
 // ---------- Jeux en cours + sessions ----------
-function listProcesses(filter) {
-  return new Promise((resolve) => {
-    const args = ['/fo', 'csv', '/nh', ...(filter ? ['/fi', `IMAGENAME eq ${filter}`] : [])];
-    execFile('tasklist', args, { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
-      if (err) return resolve(new Set());
-      resolve(new Set(out.split(/\r?\n/).map((l) => (l.match(/^"([^"]+)"/) || [])[1]).filter(Boolean).map((s) => s.toLowerCase())));
-    });
-  });
-}
-// Lequel de ces exécutables tourne ? Relevé toutes les 5 s : tasklist coûte ~100 ms de CPU à chaque
-// fois, qprocess ~20 ms. Mais qprocess coupe les noms longs à 12 caractères (« fortniteclie... ») :
-// il sert de premier tri, et tasklist, limité aux noms coupés qui correspondent, confirme le nom exact.
-function qprocessNames() {
-  return new Promise((resolve) => {
-    execFile('qprocess', ['*'], { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
-      if (err) return resolve(null);
-      const names = out.split(/\r?\n/).map((l) => (l.match(/\s\d+\s+\d+\s+(\S.*?)\s*$/) || [])[1]).filter(Boolean).map((s) => s.toLowerCase());
-      resolve(names.length ? names : null);
-    });
-  });
-}
-async function runningAmong(wanted) {
-  const q = await qprocessNames();
-  if (!q) return listProcesses(); // qprocess absent ou illisible : relevé complet comme avant
-  const found = new Set();
-  const prefixes = new Set();
-  for (const n of q) {
-    if (!n.endsWith('...')) { if (wanted.has(n)) found.add(n); continue; }
-    const pre = n.slice(0, -3);
-    for (const w of wanted) if (w.length > pre.length && w.startsWith(pre)) { prefixes.add(pre); break; }
-  }
-  for (const set of await Promise.all([...prefixes].map((pre) => listProcesses(pre + '*')))) for (const n of set) if (wanted.has(n)) found.add(n);
-  return found;
-}
+// Le relevé des processus dépend de l'OS : tasklist/qprocess sous Windows, ps sous macOS.
 
-// Un relevé à la fois : si tasklist est lent, le suivant attend au lieu de s'empiler.
+// Un relevé à la fois : si le relevé est lent, le suivant attend au lieu de s'empiler.
 let polling = false;
 async function pollRunningSafe() {
   if (polling) return;
@@ -374,17 +341,17 @@ async function pollRunningSafe() {
 async function pollRunning() {
   const now = [];
   const watched = [...games.values()].filter((g) => g.store !== 'steam' && g.installed && g.processNames && g.processNames.length);
-  // Registre Steam et liste des processus lus en même temps, sans bloquer l'interface
-  const [steamId, procs] = await Promise.all([regDwordAsync('RunningAppID'), watched.length ? runningAmong(new Set(watched.flatMap((g) => g.processNames))) : null]);
+  // Registre Steam (registry.vdf sous macOS) et liste des processus lus en même temps, sans bloquer l'interface
+  const [steamId, procs] = await Promise.all([platform.steamRunningAppId(), watched.length ? platform.runningAmong(new Set(watched.flatMap((g) => g.processNames))) : null]);
   if (steamId) now.push(String(steamId));
   if (procs) for (const g of watched) if (g.processNames.some((p) => procs.has(p))) now.push(g.key);
   const names = Object.fromEntries(now.map((k) => [k, (games.get(k) || {}).name || k]));
   sessions.tick(now, names);
 
-  for (const k of now) if (!runStart[k]) { runStart[k] = Date.now(); pauseShown[k] = 0; if (perf) perf.start(k, (games.get(k) || {}).processNames || []); }
+  for (const k of now) if (!runStart[k]) { runStart[k] = Date.now(); pauseShown[k] = 0; if (perf && platform.supports.perf) perf.start(k, (games.get(k) || {}).processNames || []); }
   for (const k of Object.keys(runStart)) if (!now.includes(k)) {
     delete runStart[k]; delete pauseShown[k];
-    const done = perf && perf.stop(k, (games.get(k) || {}).name || k);
+    const done = perf && platform.supports.perf && perf.stop(k, (games.get(k) || {}).name || k);
     if (done && win) win.webContents.send('perf-saved', k);
   }
   checkPause();
@@ -394,14 +361,15 @@ async function pollRunning() {
   syncCrosshair();
   if (win) win.webContents.send('running-changed', now);
   const stopped = prev.filter((k) => !now.includes(k));
-  // Une partie hors Steam vient de finir : on rafraîchit pour afficher le nouveau temps de jeu
-  if (win && stopped.some((k) => k.includes(':'))) win.webContents.send('library-changed');
+  // Une partie vient de finir : on rafraîchit pour afficher le nouveau temps de jeu
+  // (jeux hors Steam, et jeux Steam dont l'appid vient de disparaître).
+  if (win && stopped.some((k) => k.includes(':') || /^\d+$/.test(k))) win.webContents.send('library-changed');
 
   // Statut Discord : le premier jeu en cours (phrases qui tournent), sinon la navigation dans le launcher
   if (presence) presence.setGame(now.find((k) => games.has(k)) || null);
 
   // Sauvegarde automatique des sauvegardes à la fin d'une partie
-  if (settings().autoBackup) {
+  if (settings().autoBackup && platform.supports.saves) {
     for (const k of stopped) {
       const sg = games.get(k);
       if (!sg) continue;
@@ -508,38 +476,17 @@ const launchOpts = (key) => (readPrefs().launchOpts || {})[key] || {};
 function beforeLaunch(key) {
   const o = launchOpts(key);
   for (const proc of o.close || []) {
-    if (PROC_RE.test(proc)) execFile('taskkill', ['/IM', proc], { windowsHide: true }, () => {});
+    if (PROC_RE.test(proc)) platform.killProcess(proc);
   }
   for (const exe of o.open || []) {
-    if (isProgram(exe) && fs.existsSync(exe)) startFile(exe, '', path.dirname(exe), () => {});
+    if (isProgram(exe) && fs.existsSync(exe)) platform.startFile(exe, '', path.dirname(exe), () => {});
   }
   return o.args || '';
 }
 
-// Démarre un programme selon son type :
-// - .exe : directement, avec ses arguments ;
-// - .lnk / .url : comme un double-clic dans l'Explorateur (le raccourci porte ses propres arguments) ;
-// - .bat / .cmd : via cmd.exe (Node refuse de les lancer directement depuis la version 20.12).
+// Démarre un programme : .exe/.lnk/.bat via la couche Windows, bundle .app via « open » sous macOS.
 function startFile(file, argStr, cwd, onError) {
-  const ext = path.extname(file).toLowerCase();
-  if (ext === '.lnk' || ext === '.url') {
-    shell.openPath(file).then((err) => { if (err) onError(err); });
-    return;
-  }
-  const args = String(argStr || '').trim().match(/(?:[^\s"]+|"[^"]*")+/g) || [];
-  try {
-    let child;
-    if (ext === '.bat' || ext === '.cmd') {
-      // Les caractères spéciaux de cmd.exe dans les arguments pourraient enchaîner d'autres commandes.
-      if (/[&|<>^%]/.test(argStr || '') || /["%]/.test(file)) { onError('caractère non pris en charge dans les arguments'); return; }
-      const line = `/d /s /c ""${file}"${args.length ? ' ' + args.join(' ') : ''}"`;
-      child = spawn('cmd.exe', [line], { cwd, detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
-    } else {
-      child = spawn(file, args.map((a) => a.replace(/^"|"$/g, '')), { cwd, detached: true, stdio: 'ignore' });
-    }
-    child.on('error', (e) => onError(e.message));
-    child.unref();
-  } catch (e) { onError(e.message); }
+  platform.startFile(file, argStr, cwd, onError);
 }
 
 function launchExe(g, extra = '') {
@@ -561,7 +508,7 @@ function action(key, kind) {
       if (g.viaLegendary && kind === 'uninstall') return epicDl.uninstall(g.appName).then(() => { if (win) win.webContents.send('library-changed'); return { ok: true }; }).catch((e) => ({ error: e.message }));
       if (kind === 'play') return open(epicUri(g, 'launch'));
       if (kind === 'install-egl') return open(epicUri(g, 'install'));
-      if (kind === 'install' && epicDl) {
+      if (kind === 'install' && epicDl && platform.supports.directDownloads) {
         if (!epicDl.user()) return { needLogin: true };
         return epicDl.enqueue(g.appName, g.name).catch((e) => ({ error: e.message, needLogin: e.code === 'nologin' }));
       }
@@ -579,7 +526,7 @@ function action(key, kind) {
         return gog.uninstall(g.installDir, g.platformId).then(() => { if (win) win.webContents.send('library-changed'); return { ok: true }; }).catch((e) => ({ error: e.message }));
       }
       // Installation directe, sans GOG Galaxy, quand le compte GOG est connecté
-      if (kind === 'install' && gog) {
+      if (kind === 'install' && gog && platform.supports.directDownloads) {
         if (!gog.auth) return { needLogin: true };
         return gog.enqueue(g.platformId, g.name).catch((e) => ({ error: e.message, needLogin: e.code === 'nologin' }));
       }
@@ -599,6 +546,7 @@ function action(key, kind) {
       if (kind === 'store') return search('https://shop.battle.net/fr-fr/search?q=');
       return open(g.bnetCode ? `battlenet://${g.bnetCode}` : 'battlenet://');
     case 'riot':
+      if (platform.isMac && g.exe && kind === 'play') return launchExe(g, extra);
       if (g.riotClient && (kind === 'play' || kind === 'install')) return spawn(g.riotClient, [`--launch-product=${g.platformId}`, '--launch-patchline=live'], { detached: true, stdio: 'ignore' }).unref();
       return open('https://www.riotgames.com/fr');
     case 'amazon':
@@ -664,7 +612,7 @@ function applyTheme() {
     // Mica ne se voit qu'à travers une fenêtre transparente ; sinon le fond sombre habituel le recouvre
     if (MATERIAL_OK && material !== 'none') { try { win.setBackgroundMaterial(material); } catch { /* matière refusée */ } }
     win.setBackgroundColor(material !== 'none' ? '#00000000' : '#111113');
-    try { win.setTitleBarOverlay({ color: '#00000000', symbolColor: light ? '#1f1f1f' : '#a1a1a6', height: 36 }); } catch { /* fenêtre sans barre personnalisée */ }
+    if (!platform.isMac) { try { win.setTitleBarOverlay({ color: '#00000000', symbolColor: light ? '#1f1f1f' : '#a1a1a6', height: 36 }); } catch { /* fenêtre sans barre personnalisée */ } }
   }
 }
 
@@ -713,6 +661,7 @@ function checkPause() {
 const crosshair = new Crosshair();
 let crossManual = false; // affiché à la main hors d'un jeu reconnu
 function syncCrosshair() {
+  if (!platform.supports.crosshair) return;
   const c = settings().crosshair;
   const want = c.enabled && (crossManual || running.some((k) => c.games[k]));
   // Exécutables du jeu en cours (jeux hors Steam), pour centrer sur sa fenêtre
@@ -785,7 +734,8 @@ function checkDisks() {
       last[d.root] = Date.now();
       const old = [...games.values()].filter((g) => g.installed && g.sizeOnDisk && g.installDir && g.installDir.toUpperCase().startsWith(d.root) && (!g.lastPlayed || g.lastPlayed < Date.now() / 1000 - 180 * 86400));
       const gb = Math.round(old.reduce((s2, g) => s2 + g.sizeOnDisk, 0) / 1e9);
-      notify('storage', `Disque ${d.root.replace(/[\\/]+$/, '')} presque plein`, `${Math.round(d.free / 1e9)} Go libres${gb ? ` · ${gb} Go récupérables sur ${old.length} jeu${old.length > 1 ? 'x' : ''} pas lancé${old.length > 1 ? 's' : ''} depuis 6 mois` : ''}`, { view: 'storage' });
+      const label = d.root.replace(/[\\/]+$/, '') || (platform.isMac ? 'Macintosh HD' : d.root);
+      notify('storage', `Disque ${label} presque plein`, `${Math.round(d.free / 1e9)} Go libres${gb ? ` · ${gb} Go récupérables sur ${old.length} jeu${old.length > 1 ? 'x' : ''} pas lancé${old.length > 1 ? 's' : ''} depuis 6 mois` : ''}`, { view: 'storage' });
     }
     p.diskAlerts = last;
     writePrefs(p);
@@ -795,16 +745,14 @@ function checkDisks() {
 function applySystem() {
   const s = system();
   globalShortcut.unregisterAll();
-  if (s.shortcut) globalShortcut.register('Control+Alt+L', () => (win && win.isVisible() && win.isFocused() ? win.hide() : showWindow()));
+  if (s.shortcut) globalShortcut.register(platform.accelerators.window, () => (win && win.isVisible() && win.isFocused() ? win.hide() : showWindow()));
   const st = settings();
-  if (st.overlay.enabled) globalShortcut.register('Control+Alt+O', () => overlay.toggle(overlayInfo()));
+  if (st.overlay.enabled && platform.supports.overlay) globalShortcut.register(platform.accelerators.overlay, () => overlay.toggle(overlayInfo()));
   else overlay.hide();
-  if (st.crosshair.enabled) globalShortcut.register('Control+Alt+X', toggleCrosshair);
+  if (st.crosshair.enabled && platform.supports.crosshair) globalShortcut.register(platform.accelerators.crosshair, toggleCrosshair);
   syncCrosshair();
   applyTheme();
-  if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: !!s.autostart, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, args: ['--hidden'] });
-  }
+  if (app.isPackaged) platform.loginItem(app, !!s.autostart);
 }
 
 function createWindow() {
@@ -817,8 +765,10 @@ function createWindow() {
     backgroundColor: (nativeTheme.themeSource = 'dark', '#111113'),
     ...(MATERIAL_OK ? { backgroundMaterial: 'mica' } : {}),
     icon: path.join(ASSETS, 'icon-256.png'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#00000000', symbolColor: '#a1a1a6', height: 36 },
+    // macOS : barre native avec les feux de circulation, la zone de glissement vient du CSS.
+    ...(platform.isMac
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 14 } }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#a1a1a6', height: 36 } }),
     // sandbox : la page tourne dans le bac à sable de Chromium ; le preload n'a besoin que d'ipcRenderer
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false },
   });
@@ -848,6 +798,8 @@ async function playFromArgs(argv) {
   return true;
 }
 app.on('second-instance', async (_e, argv) => { if (!(await playFromArgs(argv))) showWindow(); });
+// macOS : cliquer sur l'icône du Dock quand la fenêtre est fermée la rouvre
+app.on('activate', () => showWindow());
 app.on('before-quit', () => { quitting = true; });
 
 app.whenReady().then(() => {
@@ -867,24 +819,30 @@ app.whenReady().then(() => {
   setInterval(checkRecaps, 6 * 3600 * 1000);
   saves = new Saves({ dataDir: app.getPath('userData'), documents: app.getPath('documents'), getBackupDir: () => settings().backupDir });
   const coversDir = dataFile('covers');
-  gog = new Gog({
-    dataDir: app.getPath('userData'),
-    getDir: () => settings().gogDir,
-    onChange: () => pollDownloads(true),
-    onDone: (j) => {
-      notify('downloads', `${j.name} est installé`, 'Tu peux lancer le jeu', { view: 'game', id: j.key });
-      if (win) win.webContents.send('library-changed');
-    },
-  });
-  epicDl = new EpicDl({
-    dataDir: app.getPath('userData'),
-    getDir: () => settings().epicDir,
-    onChange: () => pollDownloads(true),
-    onDone: (j) => {
-      notify('downloads', `${j.name} est installé`, 'Tu peux lancer le jeu', { view: 'game', id: j.key });
-      if (win) win.webContents.send('library-changed');
-    },
-  });
+  if (platform.supports.directDownloads) {
+    gog = new Gog({
+      dataDir: app.getPath('userData'),
+      getDir: () => settings().gogDir,
+      onChange: () => pollDownloads(true),
+      onDone: (j) => {
+        notify('downloads', `${j.name} est installé`, 'Tu peux lancer le jeu', { view: 'game', id: j.key });
+        if (win) win.webContents.send('library-changed');
+      },
+    });
+    epicDl = new EpicDl({
+      dataDir: app.getPath('userData'),
+      getDir: () => settings().epicDir,
+      onChange: () => pollDownloads(true),
+      onDone: (j) => {
+        notify('downloads', `${j.name} est installé`, 'Tu peux lancer le jeu', { view: 'game', id: j.key });
+        if (win) win.webContents.send('library-changed');
+      },
+    });
+  } else {
+    const { NoopDownloads } = require('./platform/noop-downloads');
+    gog = new NoopDownloads('gog');
+    epicDl = new NoopDownloads('epic');
+  }
 
   protocol.handle('steamart', (req) => {
     let file;
@@ -965,7 +923,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('open-folder', (_e, key) => {
     const g = games.get(String(key));
-    if (g && g.installDir && fs.existsSync(g.installDir)) shell.openPath(g.installDir);
+    if (!g || !g.installDir || !fs.existsSync(g.installDir)) return;
+    // Un bundle .app est un dossier : l'ouvrir par openPath lancerait le jeu.
+    const dir = /\.app$/i.test(g.installDir) ? path.dirname(g.installDir) : g.installDir;
+    shell.openPath(dir);
   });
   ipcMain.handle('open-screenshot', (_e, file) => {
     // Une capture Steam, et rien d'autre : openPath lancerait un programme si on lui en donnait un
@@ -1089,7 +1050,7 @@ app.whenReady().then(() => {
 
   // Jeux ajoutés à la main
   ipcMain.handle('pick-exe', async () => {
-    const r = await pickPath('exe', { title: 'Choisir le jeu', properties: ['openFile'], filters: [{ name: 'Programmes', extensions: ['exe', 'lnk', 'bat', 'url'] }] });
+    const r = await pickPath('exe', { title: 'Choisir le jeu', properties: ['openFile'], filters: [platform.programFilter, { name: 'Tous les fichiers', extensions: ['*'] }] });
     return r.canceled ? null : r.filePaths[0];
   });
   ipcMain.handle('pick-image', async () => {
@@ -1098,7 +1059,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('custom:add', (_e, { name, exe, args, cover } = {}) => {
     if (typeof exe !== 'string' || !path.isAbsolute(exe) || !fs.existsSync(exe)) throw new Error('Fichier introuvable');
-    if (!isProgram(exe)) throw new Error('Ce type de fichier ne se lance pas (.exe, .lnk, .url, .bat)');
+    if (!isProgram(exe)) throw new Error(`Ce type de fichier ne se lance pas. ${platform.programLabel}`);
     args = String(args || '').slice(0, 500);
     const p = readPrefs();
     const id = Date.now().toString(36);
@@ -1179,6 +1140,7 @@ app.whenReady().then(() => {
 
   // ---------- Raccourcis, options de lancement, jaquettes ----------
   ipcMain.handle('shortcut:create', (_e, key) => {
+    if (!platform.createShortcut) throw new Error('Le raccourci sur le Bureau n’est pas encore disponible sur macOS');
     const g = games.get(String(key));
     if (!g) throw new Error('Jeu introuvable');
     return sys.createShortcut(app, shell, g);
@@ -1353,6 +1315,7 @@ app.whenReady().then(() => {
   // L'adresse et l'empreinte du fichier restent ici : le renderer ne peut pas choisir ce qui est téléchargé.
   let checkedUpdate = null;
   ipcMain.handle('update:check', async () => {
+    if (!platform.supports.autoUpdate) return { error: 'La mise à jour intégrée n’est pas encore disponible sur macOS : télécharge la nouvelle version sur GitHub.' };
     checkedUpdate = null;
     try {
       const u = await sys.checkUpdate(settings().updateRepo, app.getVersion());

@@ -754,3 +754,13 @@ body.couch .content { --edge: 32px; }
 .note-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .note-title svg { width: 14px; height: 14px; }
 .note-state { font-size: 11px; color: var(--muted); }
+
+/* macOS : la barre de titre native est masquée, les zones vides déplacent la fenêtre.
+   Les contrôles reprennent la main explicitement, sinon ils deviennent des zones de glissement. */
+html[data-platform="darwin"] .topbar,
+html[data-platform="darwin"] .sidebar { -webkit-app-region: drag; }
+html[data-platform="darwin"] .topbar button,
+html[data-platform="darwin"] .topbar input,
+html[data-platform="darwin"] .sidebar button,
+html[data-platform="darwin"] .sidebar a,
+html[data-platform="darwin"] .sidebar input { -webkit-app-region: no-drag; }

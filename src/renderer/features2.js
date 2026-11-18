@@ -202,7 +202,7 @@ function gamePanels(g) {
       ${hasOpts ? `<p class="small">${[o.args ? `Arguments : <code>${esc(o.args)}</code>` : '', (o.open || []).length ? `Ouvre ${o.open.map((x) => esc(x.split(/[\\/]/).pop())).join(', ')}` : '', (o.close || []).length ? `Ferme ${o.close.map(esc).join(', ')}` : ''].filter(Boolean).join('<br>')}</p>` : ''}
       <div class="btn-col">
         <button type="button" class="btn btn-ghost" data-act="launch-opts" data-id="${g.key}">${ICONS.sliders}Options de lancement</button>
-        <button type="button" class="btn btn-ghost" data-act="shortcut" data-id="${g.key}">${ICONS.link}Raccourci sur le Bureau</button>
+        ${api.platform === 'darwin' ? '' : `<button type="button" class="btn btn-ghost" data-act="shortcut" data-id="${g.key}">${ICONS.link}Raccourci sur le Bureau</button>`}
         <button type="button" class="btn btn-ghost" data-act="cover" data-id="${g.key}">${ICONS.image}${custom ? 'Changer la jaquette' : 'Jaquette perso'}</button>
         ${custom ? `<button type="button" class="btn btn-ghost" data-act="cover-reset" data-id="${g.key}">Jaquette d’origine</button>` : ''}
         <button type="button" class="btn btn-ghost" data-act="hide" data-id="${g.key}">${ICONS.eyeOff}${(state.local.hidden || []).includes(g.key) ? 'Ne plus masquer' : 'Masquer ce jeu'}</button>
@@ -218,7 +218,7 @@ function openLaunchOpts(key) {
     modal(`<h2>Options de lancement</h2><p>${esc(g.name)}</p>
       <label class="field">Arguments${argsOk ? '' : ' (non pris en charge par cette plateforme)'}<input name="args" value="${esc(o.args || '')}" placeholder="-windowed -novid" ${argsOk ? '' : 'disabled'}></label>
       <div class="field">Ouvrir avant de jouer<div id="open-list" class="pick-list"></div><button type="button" class="btn btn-ghost" id="add-open">${ICONS.plus}Ajouter une appli (Discord, OBS…)</button></div>
-      <label class="field">Fermer avant de jouer<input name="close" value="${esc((o.close || []).join(', '))}" placeholder="chrome.exe, OneDrive.exe"><small>Noms de processus séparés par des virgules. Ces applis sont fermées proprement au lancement</small></label>
+      <label class="field">Fermer avant de jouer<input name="close" value="${esc((o.close || []).join(', '))}" placeholder="${api.platform === 'darwin' ? 'Google Chrome, Discord' : 'chrome.exe, OneDrive.exe'}"><small>Noms de processus séparés par des virgules. Ces applis sont fermées proprement au lancement</small></label>
       <div class="m-actions"><button type="button" class="btn btn-ghost" data-close>Annuler</button><button type="submit" class="btn btn-light">Enregistrer</button></div>`,
     (dlg, form) => {
       const draw = () => { $('#open-list', dlg).innerHTML = open.map((p, i) => `<div class="pick"><span class="path">${esc(p)}</span><button type="button" class="btn btn-ghost" data-rm="${i}">Retirer</button></div>`).join(''); };
@@ -302,6 +302,7 @@ gameTabContent = function (g) {
       <div class="list">${m.map((x) => `<div class="mod-row">${x.preview ? `<img src="${esc(x.preview)}" alt="" loading="lazy">` : '<span class="mod-ph"></span>'}<div class="info"><span class="t">${esc(x.title)}</span><span class="s">Mis à jour ${esc(fmtRel(x.updated).toLowerCase())}</span></div><span class="m">${fmtSize(x.size)}</span><button type="button" class="btn btn-ghost" data-mod="${x.id}">Page</button></div>`).join('')}</div></section>`;
   }
   if (tab === 'saves') {
+    if (api.platform === 'darwin') return emptyBox('Sauvegardes pas encore disponibles sur macOS', 'La base communautaire Ludusavi ne fournit pas les emplacements macOS. La copie automatique est désactivée sur cette plateforme');
     const s = load('saves', g.key, () => api.savesFind(g.key));
     if (s === 'loading') return `<section class="panel"><h2>Recherche des sauvegardes…</h2><p class="small">La première fois, le launcher télécharge la base communautaire Ludusavi (environ 20 Mo)</p></section>`;
     if (s.error) return emptyBox('Sauvegardes indisponibles', s.error);
@@ -310,7 +311,7 @@ gameTabContent = function (g) {
         <div class="section-head"><h2>Sur ce PC</h2><span class="m">${s.paths.length ? fmtSize(s.total) : ''}</span></div>
         ${s.cloud ? '<p class="small">Ce jeu synchronise déjà ses sauvegardes dans le cloud de sa plateforme. Une copie locale reste utile en cas de conflit</p>' : ''}
         ${s.paths.length ? s.paths.map((p, i) => `${i ? '<div class="sep"></div>' : ''}<div class="kv"><span title="${esc(p.path)}">${esc(p.path)}</span><span>${fmtSize(p.size)}</span></div>`).join('') : '<p class="small">Aucune sauvegarde trouvée : lance le jeu au moins une fois</p>'}
-        ${s.registry ? '<p class="small">Une partie des réglages est dans le registre Windows, non copiée</p>' : ''}
+        ${s.registry && api.platform !== 'darwin' ? '<p class="small">Une partie des réglages est dans le registre Windows, non copiée</p>' : ''}
         <div class="actions"><button type="button" class="btn btn-light" data-act="backup" data-id="${g.key}" ${s.paths.length ? '' : 'disabled'}>${ICONS.save}Sauvegarder maintenant</button><button type="button" class="btn btn-ghost" data-act="open-backups" data-id="${g.key}">Ouvrir le dossier</button></div>
       </section>
       <section class="panel"><h2>Copies (${s.backups.length})</h2>
@@ -322,8 +323,9 @@ gameTabContent = function (g) {
 
 // ---------- Vue Sauvegardes ----------
 VIEWS.saves = () => {
-  const o = load('savesAll', null, () => api.savesOverview());
   const head = `<div class="toolbar"><div class="stack-6"><h1>Sauvegardes</h1><span class="sub">Copie de tes sauvegardes de jeux, avec la base communautaire Ludusavi</span></div><button type="button" class="btn btn-ghost" data-act="open-backups">Ouvrir le dossier</button></div>`;
+  if (api.platform === 'darwin') return head + emptyBox('Sauvegardes pas encore disponibles sur macOS', 'La base communautaire Ludusavi ne fournit pas les emplacements macOS. La copie automatique est désactivée sur cette plateforme');
+  const o = load('savesAll', null, () => api.savesOverview());
   if (o === 'loading') return head + `<section class="panel"><h2>Préparation…</h2><p class="small">La première fois, le launcher télécharge la base des emplacements de sauvegarde (environ 20 Mo)</p></section>`;
   if (o.error) return head + emptyBox('Sauvegardes indisponibles', o.error);
   if (!o.length) return head + emptyBox('Aucun jeu reconnu', 'Aucun de tes jeux installés n’est dans la base des sauvegardes');
@@ -413,11 +415,12 @@ settingsSystem = function (prefs) {
   const ch = s.crosshair || {};
   const cs = CrosshairDraw.normalize(ch.style);
   const chRange = (name, label, v, min, max, unit = ' px') => `<label class="field-row">${label} <span class="ch-range"><input type="range" name="${name}" min="${min}" max="${max}" step="1" value="${v}"><output>${v}${unit}</output></span></label>`;
-  return _settingsSystem(prefs) + `
+  const mac = api.platform === 'darwin';
+  let html = _settingsSystem(prefs) + `
   <fieldset class="field set"><legend>Apparence</legend>
     <div class="seg-chips" role="radiogroup" aria-label="Taille des jaquettes">${[['s', 'Petites'], ['m', 'Moyennes'], ['l', 'Grandes']].map(([id, lab]) => `<label class="seg-radio"><input type="radio" name="coverSize" value="${id}" ${(l.coverSize || 'm') === id ? 'checked' : ''}><span>${lab}</span></label>`).join('')}</div>
   </fieldset>
-  <fieldset class="field set"><legend>Notifications Windows</legend>
+  <fieldset class="field set"><legend>Notifications</legend>
     ${cb('n_downloads', n.downloads, 'Téléchargement terminé')}
     ${cb('n_promos', n.promos, 'Promo sur ma liste de souhaits, jeu gratuit sur Epic')}
     ${cb('n_storage', n.storage, 'Disque presque plein')}
@@ -426,14 +429,14 @@ settingsSystem = function (prefs) {
     ${cb('n_updates', n.updates, 'Mise à jour pour un jeu « En cours »')}
   </fieldset>
   <fieldset class="field set"><legend>Infos en jeu</legend>
-    ${cb('ov_enabled', (s.overlay || {}).enabled !== false, 'Afficher l’heure et le temps de session avec Ctrl + Alt + O')}
+    ${cb('ov_enabled', (s.overlay || {}).enabled !== false, `Afficher l’heure et le temps de session avec ${mac ? '⌘ + ⌥ + O' : 'Ctrl + Alt + O'}`)}
     <label class="field-row">Rappel de pause
       <select name="ov_pause" class="select">${[[0, 'Jamais'], [60, 'Toutes les heures'], [90, 'Toutes les 1 h 30'], [120, 'Toutes les 2 h'], [180, 'Toutes les 3 h']].map(([v, lab]) => `<option value="${v}" ${Number((s.overlay || {}).pauseMin ?? 120) === v ? 'selected' : ''}>${lab}</option>`).join('')}</select>
     </label>
-    <small>S’affiche par-dessus les jeux en mode fenêtré sans bordure. En plein écran exclusif, Windows le cache</small>
+    <small>S’affiche par-dessus les jeux en mode fenêtré sans bordure. En plein écran exclusif, le système le cache</small>
   </fieldset>
   <fieldset class="field set"><legend>Réticule</legend>
-    ${cb('ch_enabled', ch.enabled !== false, 'Activer le réticule avec Ctrl + Alt + X')}
+    ${cb('ch_enabled', ch.enabled !== false, `Activer le réticule avec ${mac ? 'Cmd + Alt + X' : 'Ctrl + Alt + X'}`)}
     <div class="ch-preview"><canvas id="ch-canvas" width="240" height="120" aria-label="Aperçu du réticule"></canvas></div>
     <div class="seg-chips" role="radiogroup" aria-label="Forme du réticule">${[['cross', 'Croix'], ['t', 'T'], ['dot', 'Point'], ['circle', 'Cercle']].map(([id, lab]) => `<label class="seg-radio"><input type="radio" name="ch_shape" value="${id}" ${cs.shape === id ? 'checked' : ''}><span>${lab}</span></label>`).join('')}</div>
     <label class="field-row">Couleur <input type="color" name="ch_color" value="${esc(cs.color)}" class="ch-color"></label>
@@ -466,6 +469,13 @@ settingsSystem = function (prefs) {
     <div class="actions"><button type="button" class="btn btn-ghost" id="export-data">Exporter</button><button type="button" class="btn btn-ghost" id="import-data">Importer</button></div>
     <small>Statuts, notes, collections, sessions, jeux ajoutés et options de lancement, dans un seul fichier</small>
   </fieldset>`;
+  if (mac) {
+    // Pas encore d'implémentation macOS : on masque plutôt que d'afficher des réglages sans effet.
+    for (const legend of ['Réticule', 'Sauvegardes de jeux', 'Mises à jour du launcher']) {
+      html = html.replace(new RegExp(`<fieldset class="field set"><legend>${legend}</legend>[\\s\\S]*?</fieldset>`), '');
+    }
+  }
+  return html;
 };
 // Réglages du réticule lus dans le formulaire
 function crosshairStyle(f) {

@@ -7,6 +7,19 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 // ---------- Statut Discord (Rich Presence via le canal local de l'app Discord) ----------
+// Le canal est un tube nommé sous Windows, un socket Unix ailleurs (chemin différent sur macOS).
+function ipcCandidates(i) {
+  if (process.platform === 'win32') return [`\\\\?\\pipe\\discord-ipc-${i}`];
+  if (process.platform === 'darwin') {
+    const base = path.join(os.homedir(), 'Library', 'Application Support');
+    return ['discord', 'discordcanary', 'discordptb', 'discorddevelopment'].map((d) => path.join(base, d, `discord-ipc-${i}`));
+  }
+  return [
+    path.join(process.env.XDG_RUNTIME_DIR || '', `discord-ipc-${i}`),
+    path.join('/tmp', `discord-ipc-${i}`),
+  ];
+}
+
 class Discord {
   constructor() { this.sock = null; this.ready = false; this.clientId = ''; this.pending = null; this.nonce = 0; }
 
@@ -24,21 +37,26 @@ class Discord {
     this.clientId = clientId;
     const tryPipe = (i) => {
       if (i > 9) return;
-      const sock = net.createConnection(`\\\\?\\pipe\\discord-ipc-${i}`);
-      sock.once('error', () => tryPipe(i + 1));
-      sock.once('connect', () => {
-        this.sock = sock;
-        sock.on('error', () => this.close());
-        sock.on('close', () => { this.sock = null; this.ready = false; });
-        sock.on('data', (buf) => {
-          // Réponse du handshake : Discord est prêt à recevoir l'activité
-          if (!this.ready && buf.length >= 8 && buf.readInt32LE(0) === 1) {
-            this.ready = true;
-            if (this.pending !== null) this.set(this.pending);
-          }
+      const paths = ipcCandidates(i);
+      const attempt = (k) => {
+        if (k >= paths.length) return tryPipe(i + 1);
+        const sock = net.createConnection(paths[k]);
+        sock.once('error', () => attempt(k + 1));
+        sock.once('connect', () => {
+          this.sock = sock;
+          sock.on('error', () => this.close());
+          sock.on('close', () => { this.sock = null; this.ready = false; });
+          sock.on('data', (buf) => {
+            // Réponse du handshake : Discord est prêt à recevoir l'activité
+            if (!this.ready && buf.length >= 8 && buf.readInt32LE(0) === 1) {
+              this.ready = true;
+              if (this.pending !== null) this.set(this.pending);
+            }
+          });
+          sock.write(this.frame(0, { v: 1, client_id: clientId }));
         });
-        sock.write(this.frame(0, { v: 1, client_id: clientId }));
-      });
+      };
+      attempt(0);
     };
     tryPipe(0);
   }

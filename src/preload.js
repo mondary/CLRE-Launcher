@@ -4,6 +4,7 @@ const call = (ch) => (...args) => ipcRenderer.invoke(ch, ...args);
 const on = (ch) => (fn) => ipcRenderer.on(ch, (_e, v) => fn(v));
 
 contextBridge.exposeInMainWorld('launcher', {
+  platform: process.platform,
   library: call('library'),
   play: call('play'),
   install: call('install'),

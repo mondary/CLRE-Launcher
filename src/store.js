@@ -1,9 +1,6 @@
 // Fiche magasin enrichie (description, trailers, captures, tags, configuration requise)
 // et caractéristiques du PC pour comparer avec la configuration demandée.
-const os = require('os');
 const fs = require('fs');
-const { execFile } = require('child_process');
-const { PS_UTF8 } = require('./reg');
 
 const cache = new Map();
 
@@ -50,27 +47,10 @@ async function storeDetails(appid) {
   return v;
 }
 
-// ---------- Caractéristiques du PC ----------
-let specs = null;
+// ---------- Caractéristiques de la machine ----------
+// Windows (CIM), macOS (system_profiler) et Linux sont décrits par la couche plateforme.
 function pcSpecs() {
-  if (specs) return Promise.resolve(specs);
-  return new Promise((resolve) => {
-    const ps = PS_UTF8 + 'Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name + "|" + $_.AdapterRAM }; "OS|" + (Get-CimInstance Win32_OperatingSystem).Caption';
-    execFile('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 15000 }, (err, out) => {
-      const lines = String(out || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-      const gpus = lines.filter((l) => !l.startsWith('OS|')).map((l) => l.split('|')[0]).filter((n) => n && !/basic display|remote|virtual/i.test(n));
-      const osLine = lines.find((l) => l.startsWith('OS|'));
-      const cpus = os.cpus();
-      specs = {
-        cpu: cpus[0] ? cpus[0].model.replace(/\s+/g, ' ').trim() : '',
-        threads: cpus.length,
-        ramGb: Math.round(os.totalmem() / 1024 ** 3),
-        gpus,
-        os: osLine ? osLine.slice(3).replace('Microsoft ', '') : `Windows ${os.release()}`,
-      };
-      resolve(specs);
-    });
-  });
+  return require('./platform').pcSpecs();
 }
 
 // "8 GB de mémoire" / "16 Go" / "512 MB" → Go

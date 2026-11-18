@@ -160,7 +160,7 @@ VIEWS.storage = () => {
   const row = (g) => `<div class="row-item store-row" data-open="${g.key}" tabindex="0">
     <img src="${esc(g.art.header)}" alt="" loading="lazy"><span class="t"><span>${esc(g.name)}</span></span>
     <span class="m">${fmtSize(g.sizeOnDisk)}</span><span class="m">${g.lastPlayed ? fmtRel(g.lastPlayed) : 'Jamais lancé'}</span><span class="m">${esc(storeOf(g))}</span>
-    <span>${['steam', 'epic', 'gog'].includes(g.store) ? `<button type="button" class="btn btn-ghost" data-act="uninstall" data-id="${g.key}">Désinstaller</button>` : ''}</span></div>`;
+    <span>${(api.platform === 'darwin' ? g.store === 'steam' : ['steam', 'epic', 'gog'].includes(g.store)) ? `<button type="button" class="btn btn-ghost" data-act="uninstall" data-id="${g.key}">Désinstaller</button>` : ''}</span></div>`;
   return `<div class="toolbar"><div class="stack-6"><h1>Stockage</h1><span class="sub">${inst.length} jeux installés · ${fmtSize(inst.reduce((s, g) => s + g.sizeOnDisk, 0))}</span></div></div>
     ${Array.isArray(disks) ? `<div class="disks">${disks.map((d) => {
       const other = Math.max(0, d.total - d.free - d.used);
@@ -312,7 +312,7 @@ async function openAddGame() {
   const data = { exe: '', cover: '' };
   dlg.innerHTML = `<form class="m-body" id="add-form">
     <h2>Ajouter un jeu</h2>
-    <p>Un exécutable, un émulateur ou un jeu téléchargé ailleurs. Le launcher le lance, mesure ton temps de jeu et cherche sa jaquette</p>
+    <p>${api.platform === 'darwin' ? 'Une application, un émulateur ou un jeu téléchargé ailleurs' : 'Un exécutable, un émulateur ou un jeu téléchargé ailleurs'}. Le launcher le lance, mesure ton temps de jeu et cherche sa jaquette</p>
     <div class="field">Programme<div class="pick"><span class="path" id="exe-path">Aucun fichier choisi</span><button type="button" class="btn btn-ghost" id="pick-exe">Choisir…</button></div></div>
     <label class="field">Nom<input name="name" required placeholder="Nom du jeu"></label>
     <label class="field">Arguments (optionnel)<input name="args" placeholder="-fullscreen"></label>
@@ -349,9 +349,9 @@ function settingsSystem(prefs) {
   const s = prefs.system || {};
   const p = (state.lib && state.lib.platforms || []).filter((x) => x.count);
   return `<fieldset class="field set"><legend>Système</legend>
-    <label class="check"><input type="checkbox" name="closeToTray" ${s.closeToTray ? 'checked' : ''}> Garder le launcher dans la barre des tâches quand je ferme la fenêtre</label>
-    <label class="check"><input type="checkbox" name="shortcut" ${s.shortcut ? 'checked' : ''}> Ouvrir avec <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> depuis n’importe où</label>
-    <label class="check ${prefs.canAutostart ? '' : 'disabled'}"><input type="checkbox" name="autostart" ${s.autostart ? 'checked' : ''} ${prefs.canAutostart ? '' : 'disabled'}> Démarrer avec Windows, réduit${prefs.canAutostart ? '' : ' (version .exe uniquement)'}</label>
+    <label class="check"><input type="checkbox" name="closeToTray" ${s.closeToTray ? 'checked' : ''}> Garder le launcher dans la ${api.platform === 'darwin' ? 'barre des menus' : 'barre des tâches'} quand je ferme la fenêtre</label>
+    <label class="check"><input type="checkbox" name="shortcut" ${s.shortcut ? 'checked' : ''}> Ouvrir avec ${api.platform === 'darwin' ? '<kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>L</kbd>' : '<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd>'} depuis n’importe où</label>
+    <label class="check ${prefs.canAutostart ? '' : 'disabled'}"><input type="checkbox" name="autostart" ${s.autostart ? 'checked' : ''} ${prefs.canAutostart ? '' : 'disabled'}> ${api.platform === 'darwin' ? 'Ouvrir à la connexion' : 'Démarrer avec Windows'}, réduit${prefs.canAutostart ? '' : api.platform === 'darwin' ? ' (version installée uniquement)' : ' (version .exe uniquement)'}</label>
   </fieldset>
   ${p.length ? `<div class="note">Plateformes détectées : ${p.map((x) => `${STORE_NAME[x.id]} ${x.count}`).join(' · ')}</div>` : ''}`;
 }
