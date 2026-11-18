@@ -5,11 +5,13 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const zlib = require('zlib');
 const { execFile, execFileSync, spawn } = require('child_process');
 const { base } = require('../platforms');
 
 const HOME = os.homedir();
 const exists = (p) => { try { return !!p && fs.existsSync(p); } catch { return false; } };
+const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 
 // ---------- Steam ----------
 const STEAM_DIRS = [
@@ -140,6 +142,54 @@ function listApps(dir) {
   } catch { return []; }
 }
 
+// Identifiant du bundle, lu avec plutil (Info.plist binaire ou XML).
+const idCache = new Map();
+function bundleIdentifier(appPath) {
+  if (idCache.has(appPath)) return idCache.get(appPath);
+  let id = '';
+  try {
+    id = execFileSync('plutil', ['-extract', 'CFBundleIdentifier', 'raw', '-o', '-', path.join(appPath, 'Contents', 'Info.plist')], { encoding: 'utf8', timeout: 4000 }).trim();
+  } catch { /* bundle sans identifiant */ }
+  idCache.set(appPath, id);
+  return id;
+}
+
+// Recherche rapide dans l'Info.plist brut : un plist binaire garde ses chaînes en clair,
+// ce qui évite d'appeler plutil pour chaque application de /Applications.
+function plistMentions(appPath, needle) {
+  try { return fs.readFileSync(path.join(appPath, 'Contents', 'Info.plist')).includes(needle); } catch { return false; }
+}
+
+// Cherche le premier bundle .app dans un dossier de jeu (profondeur limitée).
+function findAppIn(dir, depth = 3) {
+  let entries = [];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return ''; }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (/\.app$/i.test(e.name)) return path.join(dir, e.name);
+  }
+  if (depth <= 0) return '';
+  for (const e of entries) {
+    if (!e.isDirectory() || /^(\.itch|unins|crash|setup|redist|vc_|dxsetup|ue4prereq)/i.test(e.name)) continue;
+    const hit = findAppIn(path.join(dir, e.name), depth - 1);
+    if (hit) return hit;
+  }
+  return '';
+}
+
+// Un manifeste donne un exécutable relatif (Game.app/Contents/MacOS/Game) : on remonte au bundle,
+// parce que c'est lui qu'il faut ouvrir avec « open -a ».
+function appFromExecutable(installPath, executable) {
+  if (!installPath) return '';
+  const abs = executable ? (path.isAbsolute(executable) ? executable : path.join(installPath, executable)) : '';
+  const i = abs.indexOf('.app/');
+  if (i >= 0) return abs.slice(0, i + 4);
+  if (/\.app$/i.test(abs)) return abs;
+  return findAppIn(installPath);
+}
+
+const isMacPlatform = (p) => !p || /^(mac|osx|darwin)/i.test(String(p));
+
 // ---------- GOG Galaxy ----------
 // GOG installe ses jeux en bundles .app et laisse un marqueur goggame-<id>.info dans les
 // ressources : c'est la source la plus fiable, indépendante de la base interne de Galaxy.
@@ -164,7 +214,7 @@ function gogGameFromApp(app) {
   return null;
 }
 
-function loadGog() {
+function loadGogGalaxy() {
   const games = [];
   const seen = new Set();
   for (const dir of APP_DIRS) {
@@ -181,7 +231,188 @@ function loadGog() {
   return games;
 }
 
-// ---------- Battle.net ----------
+// ---------- EA app ----------
+// EA installe ses jeux en bundles .app, par défaut dans /Applications/EA Games.
+// Les bundles portent un identifiant com.ea.* : c'est le marqueur qui les distingue des
+// autres applications quand l'utilisateur a changé de dossier d'installation.
+const EA_DIRS = [path.join('/Applications', 'EA Games'), path.join(HOME, 'Applications', 'EA Games')];
+const EA_SELF = /^(EA app|Origin)\.app$/i;
+
+function loadEa(roots = [...EA_DIRS, ...APP_DIRS]) {
+  const games = [];
+  const seen = new Set();
+  for (const root of roots) {
+    const isEaFolder = /\/EA Games$/i.test(root);
+    for (const app of listApps(root)) {
+      if (seen.has(app)) continue;
+      if (EA_SELF.test(path.basename(app))) continue;
+      // Hors du dossier EA Games, on lit d'abord l'Info.plist brut : plutil sur chaque
+      // application de /Applications coûterait plusieurs secondes.
+      if (!isEaFolder && !plistMentions(app, 'com.ea.')) continue;
+      const id = bundleIdentifier(app);
+      if (/eaapp|origin/i.test(id)) continue;
+      if (!exists(app)) continue;
+      seen.add(app);
+      const name = path.basename(app, '.app');
+      games.push(base('ea', id || name.toLowerCase().replace(/\s+/g, '-'), name, {
+        installed: true, installDir: app, library: path.dirname(app), exe: app,
+        processNames: appProcessNames(app),
+      }));
+    }
+  }
+  return games;
+}
+
+// ---------- itch.io ----------
+// L'app itch installe chaque jeu dans un dossier de apps/ avec un reçu .itch/receipt.json.gz.
+// Le reçu est la source de vérité : il survit à une réinitialisation de la base butler.db.
+const ITCH_ROOTS = [
+  path.join(HOME, 'Library', 'Application Support', 'itch', 'apps'),
+  path.join(HOME, 'Library', 'Application Support', 'kitch', 'apps'),
+];
+
+function itchReceipt(dir) {
+  const metaDir = path.join(dir, '.itch');
+  try { return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(metaDir, 'receipt.json.gz'))).toString('utf8')); } catch { /* format compressé absent */ }
+  return readJson(path.join(metaDir, 'receipt.json'));
+}
+
+function loadItch(roots = ITCH_ROOTS) {
+  const games = [];
+  const seen = new Set();
+  for (const root of roots) {
+    let dirs = [];
+    try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()); } catch { continue; }
+    for (const d of dirs) {
+      if (d.name === 'downloads') continue;
+      const dir = path.join(root, d.name);
+      const receipt = itchReceipt(dir);
+      if (!receipt) continue;
+      const game = receipt.game || {};
+      const id = String(game.id || receipt.game_id || d.name);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const app = findAppIn(dir, 3);
+      if (!app) continue; // build Windows : à lancer par itch, pas par le launcher
+      games.push(base('itch', id, game.title || receipt.title || d.name, {
+        installed: true, installDir: dir, library: root, exe: app, workingDir: path.dirname(app),
+        processNames: appProcessNames(app),
+        customCover: game.stillCoverUrl || game.coverUrl || '',
+      }));
+    }
+  }
+  return games;
+}
+
+// ---------- Heroic (Epic / GOG / Amazon) ----------
+// Heroic s'appuie sur Legendary, gogdl et Nile ; chacun écrit la liste des jeux installés
+// dans un JSON. On ne garde que les builds macOS natifs, lançables par « open -a ».
+const HEROIC_ROOTS = [
+  path.join(HOME, 'Library', 'Application Support', 'heroic'),
+  path.join(HOME, 'Library', 'Application Support', 'Heroic'),
+  path.join(HOME, '.config', 'heroic'),
+];
+
+function heroicFiles(rel, roots) {
+  const out = roots.map((r) => path.join(r, rel));
+  // Legendary peut aussi vivre seul, hors de Heroic.
+  if (/^legendaryConfig/.test(rel)) out.push(path.join(HOME, '.config', 'legendary', rel.split('/').pop()));
+  return out;
+}
+
+function firstJson(paths) {
+  for (const p of paths) {
+    const j = readJson(p);
+    if (j) return j;
+  }
+  return null;
+}
+
+function heroicHostedGame(installPath, executable, platform) {
+  if (!isMacPlatform(platform) || !installPath || !exists(installPath)) return '';
+  const app = appFromExecutable(installPath, executable);
+  return app && exists(app) ? app : '';
+}
+
+// Lecture pure, sans cache : utilisée par les tests et par heroicData().
+function readHeroic(roots = HEROIC_ROOTS) {
+  const epic = [];
+  const gog = [];
+  const amazon = [];
+
+  // Legendary : objet indexé par AppName
+  const legendary = firstJson(heroicFiles('legendaryConfig/legendary/installed.json', roots));
+  for (const [key, v] of Object.entries(legendary && typeof legendary === 'object' ? legendary : {})) {
+    if (!v || typeof v !== 'object') continue;
+    const appName = v.app_name || key;
+    const app = heroicHostedGame(v.install_path, v.executable, v.platform);
+    if (!app) continue;
+    epic.push(base('epic', appName, v.title || appName, {
+      installed: true, viaHeroic: true, installDir: v.install_path, library: path.dirname(v.install_path),
+      exe: app, workingDir: path.dirname(app), processNames: appProcessNames(app),
+    }));
+  }
+
+  // gogdl : { installed: [...] }, sans titre ; les titres sont dans store_cache/gog_library.json
+  const gogInstalled = firstJson(heroicFiles('gog_store/installed.json', roots));
+  const gogLibrary = firstJson(heroicFiles('store_cache/gog_library.json', roots)) || firstJson(heroicFiles('gog_store/library.json', roots));
+  const titles = new Map(((gogLibrary && gogLibrary.games) || []).map((g) => [String(g.app_name), g.title]));
+  for (const it of (gogInstalled && gogInstalled.installed) || []) {
+    if (!it || typeof it !== 'object') continue;
+    const appName = String(it.appName || it.app_name || '');
+    if (!appName) continue;
+    const app = heroicHostedGame(it.install_path, it.executable, it.platform);
+    if (!app) continue;
+    gog.push(base('gog', appName, titles.get(appName) || path.basename(it.install_path), {
+      installed: true, viaHeroic: true, installDir: it.install_path, library: path.dirname(it.install_path),
+      exe: app, workingDir: path.dirname(app), processNames: appProcessNames(app),
+    }));
+  }
+
+  // Nile (Amazon) : structure tolérante (liste, objet indexé ou { installed: [...] })
+  const nileRaw = firstJson(heroicFiles('nile_config/nile/installed.json', roots));
+  const nile = !nileRaw ? [] : Array.isArray(nileRaw) ? nileRaw
+    : Array.isArray(nileRaw.installed) ? nileRaw.installed
+      : Object.entries(nileRaw).map(([k, v]) => ({ app_name: k, ...(v && typeof v === 'object' ? v : {}) }));
+  const amazonLib = firstJson(heroicFiles('store_cache/amazon_library.json', roots));
+  const amazonTitles = new Map(((amazonLib && (amazonLib.games || amazonLib)) || []).map((g) => [String(g.app_name || g.id), g.title]));
+  for (const it of nile) {
+    if (!it || typeof it !== 'object') continue;
+    const appName = String(it.app_name || it.appName || it.id || '');
+    if (!appName) continue;
+    const installPath = it.path || it.install_path || it.installPath || '';
+    const app = heroicHostedGame(installPath, it.executable, it.platform);
+    if (!app) continue;
+    amazon.push(base('amazon', appName, it.title || amazonTitles.get(appName) || path.basename(installPath), {
+      installed: true, viaHeroic: true, installDir: installPath, library: path.dirname(installPath),
+      exe: app, workingDir: path.dirname(app), processNames: appProcessNames(app),
+    }));
+  }
+
+  return { epic, gog, amazon };
+}
+
+// Le sync appelle loadEpic puis loadPlatforms : on évite de relire les mêmes fichiers deux fois.
+let heroicCache = { t: 0, data: null };
+function loadHeroic() {
+  if (heroicCache.data && Date.now() - heroicCache.t < 5000) return heroicCache.data;
+  heroicCache = { t: Date.now(), data: readHeroic() };
+  return heroicCache.data;
+}
+
+// Fusionne les entrées GOG de Galaxy et de Heroic (même clé gog:<id>).
+function loadGog() {
+  const byKey = new Map();
+  for (const g of [...loadGogGalaxy(), ...loadHeroic().gog]) {
+    const cur = byKey.get(g.key);
+    if (!cur) { byKey.set(g.key, g); continue; }
+    if (!cur.exe && g.exe) { cur.exe = g.exe; cur.workingDir = g.workingDir; }
+    if (!cur.installed || !exists(cur.installDir)) { cur.installed = g.installed; cur.installDir = g.installDir; }
+    cur.processNames = [...new Set([...(cur.processNames || []), ...(g.processNames || [])])];
+  }
+  return [...byKey.values()];
+}
+
 // Blizzard installe chaque jeu dans un dossier de /Applications ; le client répond aux URI
 // battlenet://<code>. Pas de base locale exploitable sans rouvrir le format du client.
 const BNET_APPS = [
@@ -230,7 +461,25 @@ const EPIC_DATA_CANDIDATES = [
   '/Users/Shared/Epic/EpicGamesLauncher/Data',
 ];
 const epicDataDir = EPIC_DATA_CANDIDATES.find(exists) || EPIC_DATA_CANDIDATES[0];
-const loadEpic = (stats) => require('../epic').loadEpic(stats, { dataDir: epicDataDir, platform: 'mac' });
+
+// Les jeux Epic installés par Heroic/Legendary complètent ceux du Epic Games Launcher.
+// On mémorise ceux déjà fusionnés pour ne pas les remettre dans la liste « autres » (visuels).
+let heroicMerged = new Set();
+function loadEpic(stats) {
+  const egl = require('../epic').loadEpic(stats, { dataDir: epicDataDir, platform: 'mac' });
+  heroicMerged = new Set();
+  for (const h of loadHeroic().epic) {
+    const ex = egl.games.find((g) => g.appName === h.appName);
+    if (!ex) continue;
+    heroicMerged.add(h.appName);
+    Object.assign(ex, {
+      installed: true, viaHeroic: true, installDir: h.installDir, library: h.library,
+      exe: h.exe, workingDir: h.workingDir,
+      processNames: [...new Set([...(ex.processNames || []), ...(h.processNames || [])])],
+    });
+  }
+  return egl;
+}
 
 // ---------- Caractéristiques du Mac ----------
 let specs = null;
@@ -261,7 +510,7 @@ module.exports = {
   isMac: true,
   isWin: false,
   supported: true,
-  platformIds: ['steam', 'epic', 'gog', 'battlenet', 'riot', 'custom'],
+  platformIds: ['steam', 'epic', 'gog', 'ea', 'battlenet', 'riot', 'amazon', 'itch', 'custom'],
   supports: {
     overlay: true,
     crosshair: false, // la géométrie de fenêtre passe par user32 sous Windows
@@ -289,9 +538,21 @@ module.exports = {
   loginItem: (app, openAtLogin) => app.setLoginItemSettings({ openAtLogin }),
   epicDataDir,
   loadEpic,
-  loadPlatforms: (customGames) => [...loadGog(), ...loadBattleNet(), ...loadRiot(), ...loadCustom(customGames)],
+  loadPlatforms: (customGames) => {
+    const h = loadHeroic();
+    // Jeux Epic qu'Heroic a installés mais que le cache du Epic Games Launcher ne connaît pas :
+    // ils passent par la liste « autres » pour recevoir leurs visuels (recherche Steam).
+    const epicOnly = h.epic.filter((g) => !heroicMerged.has(g.appName));
+    return [
+      ...loadGog(), ...loadEa(), ...loadItch(), ...loadBattleNet(), ...loadRiot(),
+      ...loadCustom(customGames), ...epicOnly, ...h.amazon,
+    ];
+  },
   loadMorePlatforms: async () => [],
   pcSpecs,
   // Exposé pour les tests et le diagnostic
-  _internal: { gogGameFromApp, appProcessNames, bundleExecutable, listApps },
+  _internal: {
+    gogGameFromApp, appProcessNames, bundleExecutable, listApps,
+    loadEa, loadItch, loadGogGalaxy, readHeroic, readHeroicCached: loadHeroic, itchReceipt, findAppIn, bundleIdentifier,
+  },
 };

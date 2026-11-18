@@ -502,6 +502,8 @@ function action(key, kind) {
   const extra = kind === 'play' ? beforeLaunch(g.key) : '';
   switch (g.store) {
     case 'epic':
+      // Installé par Heroic (build macOS natif) : on ouvre le bundle directement.
+      if (g.viaHeroic && kind === 'play' && g.exe) return launchExe(g, extra);
       // Installés par le launcher (Legendary) : lancement et désinstallation sans le Epic Games Launcher
       if (g.viaLegendary && kind === 'play' && g.needsUpdate) return epicDl.enqueue(g.appName, g.name, { update: true }).catch((e) => ({ error: e.message }));
       if (g.viaLegendary && kind === 'play') return epicDl.launch(g.appName);
@@ -535,6 +537,7 @@ function action(key, kind) {
       if (kind === 'store') return search('https://store.ubisoft.com/fr/search?q=');
       return open(`uplay://launch/${g.platformId}/0`);
     case 'ea':
+      if (kind === 'play' && g.exe) return launchExe(g, extra);
       if (kind === 'store') return search('https://www.ea.com/fr-fr/games/library?q=');
       return open(`origin2://game/launch?offerIds=${encodeURIComponent(g.platformId)}`);
     case 'xbox':
@@ -550,6 +553,7 @@ function action(key, kind) {
       if (g.riotClient && (kind === 'play' || kind === 'install')) return spawn(g.riotClient, [`--launch-product=${g.platformId}`, '--launch-patchline=live'], { detached: true, stdio: 'ignore' }).unref();
       return open('https://www.riotgames.com/fr');
     case 'amazon':
+      if (kind === 'play' && g.exe) return launchExe(g, extra);
       if (kind === 'store') return search('https://gaming.amazon.com/search?q=');
       return open(kind === 'play' ? `amazon-games://play/${g.platformId}` : 'amazon-games://');
     case 'itch':

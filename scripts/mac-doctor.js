@@ -58,7 +58,20 @@ const time = (label, fn) => {
   const byStore = {};
   for (const g of others) (byStore[g.store] = byStore[g.store] || []).push(g);
   for (const [store, list] of Object.entries(byStore)) line(store, `${list.length} jeu(x) · ${list.slice(0, 2).map((g) => g.name).join(', ')}`);
-  if (!others.length) line('installés', 'aucun jeu détecté dans /Applications');
+  if (!others.length) line('installés', 'aucun jeu détecté (Steam, Epic et GOG sont lus séparément)');
+
+  console.log('\nClients');
+  const home = require('os').homedir();
+  for (const [name, p] of [
+    ['Steam', steamPath],
+    ['Epic Games Launcher', platform.epicDataDir],
+    ['GOG Galaxy', path.join(home, 'Library', 'Application Support', 'GOG.com')],
+    ['Heroic', path.join(home, 'Library', 'Application Support', 'heroic')],
+    ['itch.io', path.join(home, 'Library', 'Application Support', 'itch')],
+    ['EA app', '/Applications/EA app.app'],
+    ['Battle.net', '/Applications/Battle.net.app'],
+    ['League of Legends', '/Applications/League of Legends.app'],
+  ]) line(name, p && fs.existsSync(p) ? 'installé' : 'absent');
 
   console.log('\nProcessus');
   const { v: procs, ms } = await time('ps', () => platform.processNames());

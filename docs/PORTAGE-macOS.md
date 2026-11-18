@@ -75,6 +75,31 @@ Toujours `open -a <bundle>` (avec `--args` si besoin). Lancer le binaire dans
 `Contents/MacOS` casse le contexte du bundle : ressources, signature, `LSUIElement`,
 association de fichiers.
 
+### EA app
+EA installe ses jeux en bundles `.app`, par défaut dans `/Applications/EA Games`
+(ou `~/Applications/EA Games`). Hors de ce dossier, le marqueur fiable est
+`CFBundleIdentifier = com.ea.*` : on lit l'`Info.plist` brut pour filtrer vite, puis
+`plutil` seulement sur les candidats.
+
+### itch.io
+L'app itch installe chaque jeu dans `~/Library/Application Support/itch/apps/<dossier>`
+(et `kitch` pour la version canary), avec un reçu `.itch/receipt.json.gz` qui contient
+l'id, le titre et les visuels. Le reçu est la source de vérité : il survit à une
+réinitialisation de `butler.db`. Les jeux sans bundle `.app` (builds Windows) sont ignorés.
+
+### Heroic Games Launcher
+Heroic s'appuie sur trois outils, chacun avec sa liste de jeux installés sous
+`~/Library/Application Support/heroic` :
+
+| Outil | Fichier | Store |
+|---|---|---|
+| Legendary | `legendaryConfig/legendary/installed.json` | Epic |
+| gogdl | `gog_store/installed.json` (+ titres dans `store_cache/gog_library.json`) | GOG |
+| Nile | `nile_config/nile/installed.json` | Amazon |
+
+Seuls les jeux dont `platform` vaut Mac/osx **et** qui possèdent un bundle `.app` sont
+listés : un build Windows lancé par Wine doit passer par Heroic, pas par `open -a`.
+
 ### Nom de processus
 Pour mesurer le temps de jeu, il faut le nom qui apparaît dans `ps`, c'est-à-dire
 `CFBundleExecutable` déclaré dans `Contents/Info.plist` (lu avec `plutil`). Le nom du

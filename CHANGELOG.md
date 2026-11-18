@@ -4,6 +4,23 @@ Les versions suivent le calendrier : `AAAA.MM.PATCH`. Le fork macOS garde sa pro
 numérotation ; le dépôt d'origine utilise encore SemVer (`2.0.0`), d'où l'écart assumé
 avec `package.json` en amont.
 
+## 2026.11.3 — 2026-11-18
+
+- **EA app (macOS)** : les jeux installés en bundles `.app` sont détectés dans
+  `/Applications/EA Games` et `~/Applications/EA Games`, ou par leur identifiant
+  `com.ea.*` s'ils sont ailleurs. Lancement direct du bundle.
+- **itch.io** : lecture des reçus `.itch/receipt.json.gz` (ou `receipt.json`), jeux
+  installés dans `~/Library/Application Support/itch/apps` (et `kitch`), lancement du
+  bundle `.app`, jaquette du reçu.
+- **Heroic Games Launcher** : lecture des jeux installés par Legendary (Epic), gogdl (GOG)
+  et Nile (Amazon) dans `~/Library/Application Support/heroic`. Seuls les builds macOS
+  natifs sont listés et lançables ; les builds Windows/Wine sont ignorés. Les jeux Epic
+  déjà connus du Epic Games Launcher sont fusionnés, les autres reçoivent leurs visuels
+  par la recherche Steam.
+- Nouveaux tests sur fixtures : EA, itch.io, Heroic (dont un build Windows à ignorer).
+- `npm run doctor` liste aussi les clients détectés (Steam, Epic, GOG, Heroic, itch,
+  EA app, Battle.net, LoL).
+
 ## 2026.11.2 — 2026-11-18
 
 - macOS : zones de glissement de la fenêtre limitées à la barre supérieure et au logo,

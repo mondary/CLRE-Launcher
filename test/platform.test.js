@@ -141,6 +141,90 @@ test('GOG : reconnaît un bundle .app par son marqueur goggame-<id>.info', { ski
   assert.deepEqual(darwin._internal.appProcessNames(app), ['celeste']);
 });
 
+// ---------- EA app ----------
+test('EA app : reconnaît un bundle com.ea.* et ignore les autres applications', { skip: !isMac }, () => {
+  const root = tmp('ea');
+  const ea = path.join(root, 'The Sims 4.app');
+  const other = path.join(root, 'Notes.app');
+  for (const [app, id, exe] of [[ea, 'com.ea.mas.TheSims4', 'The Sims 4'], [other, 'com.apple.Notes', 'Notes']]) {
+    write(path.join(app, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>${id}</string>
+<key>CFBundleExecutable</key><string>${exe}</string>
+</dict></plist>`);
+  }
+  const darwin = require('../src/platform/darwin');
+  const games = darwin._internal.loadEa([root]);
+  assert.equal(games.length, 1);
+  assert.equal(games[0].store, 'ea');
+  assert.equal(games[0].name, 'The Sims 4');
+  assert.equal(games[0].exe, ea);
+  assert.deepEqual(games[0].processNames, ['the sims 4']);
+});
+
+// ---------- itch.io ----------
+test('itch.io : lit le reçu gzippé et trouve le bundle .app', { skip: !isMac }, () => {
+  const zlib = require('zlib');
+  const root = tmp('itch');
+  const dir = path.join(root, 'celeste');
+  const app = path.join(dir, 'Celeste.app');
+  write(path.join(app, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>Celeste</string></dict></plist>`);
+  write(path.join(dir, '.itch', 'receipt.json.gz'), zlib.gzipSync(JSON.stringify({
+    game: { id: 12345, title: 'Celeste', stillCoverUrl: 'https://example.test/cover.png' },
+  })));
+
+  const darwin = require('../src/platform/darwin');
+  const games = darwin._internal.loadItch([root]);
+  assert.equal(games.length, 1);
+  const g = games[0];
+  assert.equal(g.store, 'itch');
+  assert.equal(g.name, 'Celeste');
+  assert.equal(g.key, 'itch:12345');
+  assert.equal(g.exe, app);
+  assert.equal(g.customCover, 'https://example.test/cover.png');
+  assert.deepEqual(g.processNames, ['celeste']);
+});
+
+// ---------- Heroic ----------
+test('Heroic : récupère les jeux Mac d’Epic et GOG, ignore les builds Windows', { skip: !isMac }, () => {
+  const root = tmp('heroic');
+  const macGame = path.join(root, 'Mac Game');
+  const macApp = path.join(macGame, 'Mac Game.app');
+  write(path.join(macApp, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>MacGame</string></dict></plist>`);
+  const celeste = path.join(root, 'Celeste');
+  const celesteApp = path.join(celeste, 'Celeste.app');
+  write(path.join(celesteApp, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>Celeste</string></dict></plist>`);
+
+  write(path.join(root, 'legendaryConfig', 'legendary', 'installed.json'), JSON.stringify({
+    AppName: { app_name: 'AppName', title: 'Mac Game', install_path: macGame, executable: 'Mac Game.app/Contents/MacOS/MacGame', platform: 'Mac' },
+    WinGame: { app_name: 'WinGame', title: 'Windows Only', install_path: path.join(root, 'WinGame'), executable: 'WinGame.exe', platform: 'Windows' },
+  }));
+  write(path.join(root, 'gog_store', 'installed.json'), JSON.stringify({
+    installed: [{ appName: '1207658924', install_path: celeste, executable: '', platform: 'osx' }],
+  }));
+  write(path.join(root, 'store_cache', 'gog_library.json'), JSON.stringify({
+    games: [{ app_name: '1207658924', title: 'Celeste' }],
+  }));
+
+  const darwin = require('../src/platform/darwin');
+  const h = darwin._internal.readHeroic([root]);
+  assert.equal(h.epic.length, 1, 'un build Windows ne doit pas être listé');
+  assert.equal(h.epic[0].name, 'Mac Game');
+  assert.equal(h.epic[0].viaHeroic, true);
+  assert.equal(h.epic[0].exe, macApp);
+  assert.equal(h.gog.length, 1);
+  assert.equal(h.gog[0].name, 'Celeste');
+  assert.equal(h.gog[0].exe, celesteApp);
+  assert.equal(h.amazon.length, 0);
+});
+
 // ---------- Règles de lancement ----------
 test('macOS : un bundle .app est un programme, un dossier quelconque non', { skip: !isMac }, () => {
   const darwin = require('../src/platform/darwin');
@@ -161,11 +245,10 @@ test('macOS : un bundle .app est un programme, un dossier quelconque non', { ski
   assert.equal(darwin.isLocalFile('relative/chemin'), false);
 });
 
-test('macOS : la liste des plateformes n’annonce pas Ubisoft, Xbox ou Amazon', { skip: !isMac }, () => {
+test('macOS : la liste des plateformes n’annonce pas Ubisoft ni Xbox', { skip: !isMac }, () => {
   const darwin = require('../src/platform/darwin');
-  for (const absent of ['ubisoft', 'xbox', 'amazon', 'ea']) assert.ok(!darwin.platformIds.includes(absent), absent);
-  assert.ok(darwin.platformIds.includes('steam'));
-  assert.ok(darwin.platformIds.includes('gog'));
+  for (const absent of ['ubisoft', 'xbox']) assert.ok(!darwin.platformIds.includes(absent), absent);
+  for (const present of ['steam', 'epic', 'gog', 'ea', 'battlenet', 'riot', 'amazon', 'itch']) assert.ok(darwin.platformIds.includes(present), present);
 });
 
 // ---------- Doublure des téléchargements directs ----------

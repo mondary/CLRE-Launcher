@@ -4,7 +4,7 @@ Fork macOS de [jclementc/CLRE-Launcher](https://github.com/jclementc/CLRE-Launch
 Objectif : un launcher unique sur macOS, puis une version Steam Deck. Windows reste la
 référence : la couche plateforme ne doit rien changer à son comportement.
 
-Dernière mise à jour : 2026-11-18 · version `2026.11.2`.
+Dernière mise à jour : 2026-11-18 · version `2026.11.3`.
 
 ## État actuel
 
@@ -14,6 +14,10 @@ Dernière mise à jour : 2026-11-18 · version `2026.11.2`.
 | Steam | ✅ | 709 jeux lus sur la machine de test, compte, collections, succès, lancement |
 | Epic Games Launcher | ✅ | 140 jeux Mac possédés, manifestes, lancement |
 | GOG Galaxy | ✅ | bundles `.app` reconnus par `goggame-<id>.info` |
+| Heroic (Epic/GOG/Amazon) | ✅ | `installed.json` de Legendary/gogdl/Nile, builds Mac natifs |
+| EA app | ✅ | bundles `.app` de `/Applications/EA Games` ou identifiant `com.ea.*` |
+| itch.io | ✅ | reçus `.itch/receipt.json.gz` de `~/Library/Application Support/itch/apps` |
+| Amazon Games | 🟡 | uniquement via Heroic/Nile |
 | Battle.net | 🟡 | jeux Blizzard détectés dans `/Applications`, lancement par URI |
 | Riot (LoL) | 🟡 | bundle natif détecté, lancement par `open` |
 | Jeux ajoutés à la main | ✅ | `.app`, exécutables, arguments, jaquettes |
@@ -51,11 +55,11 @@ Légende : ✅ fonctionne · 🟡 partiel ou à valider à l'écran · ❌ absen
 - [ ] **Réticule** : géométrie de fenêtre via `CGWindowListCopyWindowInfo` (petit helper
       Swift) ou `System Events` (permission Accessibilité).
 - [ ] **Raccourci Bureau** : alias Finder ou petit `.app` généré par `osacompile`.
-- [ ] **Battle.net / EA app** : trouver la source locale fiable (base du client, pas une
-      liste de noms codée en dur).
-- [ ] **Heroic** : lire `gameinfo.json` et les manifestes Legendary pour couvrir
-      Epic/GOG/Amazon installés hors clients officiels.
-- [ ] **itch.io** : dossiers d'installation macOS de l'app itch.
+- [x] **Heroic** : lecture des manifestes Legendary/gogdl/Nile (builds Mac natifs).
+- [x] **itch.io** : reçus `.itch/receipt.json.gz` dans `~/Library/Application Support/itch/apps`.
+- [x] **EA app** : bundles `.app` de `EA Games` ou identifiant `com.ea.*`.
+- [ ] **Battle.net** : trouver la source locale fiable (base du client, pas une liste de
+      noms codée en dur), et couvrir les jeux hors `/Applications`.
 - [ ] **Saves / récap / journal** : vérifier les succès et captures Steam sur macOS
       (les chemins `appcache/stats` et `760/remote` fonctionnent déjà).
 
