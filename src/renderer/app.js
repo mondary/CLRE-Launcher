@@ -539,7 +539,9 @@ function viewGame() {
             <button type="button" class="action" data-act="details" data-id="${g.key}"><span class="ic">${ICONS.ext}</span><span>${g.store === 'steam' ? 'Fiche dans Steam<small>Succès, propriétés</small>' : g.store === 'custom' ? 'Fiche du jeu<small>Ajouté à la main</small>' : `${esc(storeOf(g))}<small>Options, vérification</small>`}</span></button>
             ${g.store === 'custom'
               ? `<button type="button" class="action danger" data-act="remove-custom" data-id="${g.key}"><span class="ic">${ICONS.trash}</span><span>Retirer du launcher<small>Le jeu reste sur ton disque</small></span></button>`
-              : !(api.platform === 'darwin' ? g.store === 'steam' : ['steam', 'epic', 'gog'].includes(g.store)) ? ''
+              : !(g.installed
+                ? (api.platform === 'darwin' ? g.store === 'steam' : ['steam', 'epic', 'gog'].includes(g.store))
+                : ['steam', 'epic', 'gog', 'amazon'].includes(g.store)) ? ''
               : g.installed
               ? `<button type="button" class="action danger" data-act="uninstall" data-id="${g.key}"><span class="ic">${ICONS.trash}</span><span>Désinstaller<small>${g.store === 'gog' ? 'Sans GOG Galaxy' : g.store === 'epic' ? (g.viaLegendary ? 'Sans le Epic Games Launcher' : 'Depuis la bibliothèque Epic') : 'Steam te demandera confirmation'}</small></span></button>`
               : `<button type="button" class="action" data-act="install" data-id="${g.key}"><span class="ic">${ICONS.download}</span><span>Installer<small>Via ${storeOf(g)}</small></span></button>`}

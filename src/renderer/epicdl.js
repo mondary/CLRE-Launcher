@@ -47,6 +47,8 @@ function epicConnectBrowser() {
 async function epicInstall(g) {
   if (g.thirdParty) { toast(`${g.name} s’installe par un autre launcher (Ubisoft Connect ou EA app)`); return; }
   let st = await api.epicStatus();
+  // Jeu géré par Heroic : c'est lui qui installe (aucun téléchargeur direct sur macOS).
+  if (g.viaHeroic) return api.install(g.key);
   // Plateforme sans Legendary (macOS) : on ouvre le Epic Games Launcher sur le jeu.
   if (st.available === false) { toast(st.reason || 'Installation directe indisponible'); return api.install(g.key); }
   if (!st.connected) {

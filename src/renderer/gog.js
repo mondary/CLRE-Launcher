@@ -44,6 +44,8 @@ function gogConnectBrowser() {
 
 async function gogInstall(g) {
   let st = await api.gogStatus();
+  // Jeu géré par Heroic : c'est lui qui installe (aucun téléchargeur direct sur macOS).
+  if (g.viaHeroic) return api.install(g.key);
   // Plateforme sans téléchargeur direct (macOS) : on ouvre GOG Galaxy sur la fiche du jeu.
   if (st.available === false) { toast(st.reason || 'Installation directe indisponible'); return api.install(g.key); }
   if (!st.connected) {

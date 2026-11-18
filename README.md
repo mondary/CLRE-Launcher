@@ -27,8 +27,8 @@ Gratuit · Open source (MIT) · Windows · macOS (fork expérimental) · Aucun c
 > ```
 >
 > **Fonctionne sur macOS** : Steam (bibliothèque, temps de jeu, succès, collections,
-> lancement), Epic Games Launcher, GOG Galaxy (bundles `.app`), Heroic (Epic/GOG/Amazon
-> en build Mac natif), EA app, itch.io, Battle.net, League of Legends, jeux ajoutés à la
+> lancement), Epic Games Launcher, GOG Galaxy (bundles `.app`), Heroic (Epic/GOG/Amazon,
+> natif ou Wine), EA app, itch.io, Battle.net, League of Legends, jeux ajoutés à la
 > main (`.app`), temps de jeu hors Steam, présence Discord.
 >
 > **Pas encore** : sauvegardes Ludusavi, réticule, perf CPU/GPU/FPS, raccourci Bureau,

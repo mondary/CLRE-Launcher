@@ -189,7 +189,7 @@ test('itch.io : lit le reçu gzippé et trouve le bundle .app', { skip: !isMac }
 });
 
 // ---------- Heroic ----------
-test('Heroic : récupère les jeux Mac d’Epic et GOG, ignore les builds Windows', { skip: !isMac }, () => {
+test('Heroic : jeux Mac et Windows, plus les bibliothèques possédées GOG/Amazon/Epic', { skip: !isMac }, () => {
   const root = tmp('heroic');
   const macGame = path.join(root, 'Mac Game');
   const macApp = path.join(macGame, 'Mac Game.app');
@@ -206,23 +206,46 @@ test('Heroic : récupère les jeux Mac d’Epic et GOG, ignore les builds Window
     AppName: { app_name: 'AppName', title: 'Mac Game', install_path: macGame, executable: 'Mac Game.app/Contents/MacOS/MacGame', platform: 'Mac' },
     WinGame: { app_name: 'WinGame', title: 'Windows Only', install_path: path.join(root, 'WinGame'), executable: 'WinGame.exe', platform: 'Windows' },
   }));
+  fs.mkdirSync(path.join(root, 'WinGame'), { recursive: true });
   write(path.join(root, 'gog_store', 'installed.json'), JSON.stringify({
     installed: [{ appName: '1207658924', install_path: celeste, executable: '', platform: 'osx' }],
   }));
   write(path.join(root, 'store_cache', 'gog_library.json'), JSON.stringify({
-    games: [{ app_name: '1207658924', title: 'Celeste' }],
+    games: [{ app_name: '1207658924', title: 'Celeste' }, { app_name: '999', title: 'Owned GOG' }],
+  }));
+  write(path.join(root, 'store_cache', 'legendary_library.json'), JSON.stringify({
+    library: [{ app_name: 'OwnedEpic', title: 'Owned Epic' }],
+  }));
+  const amazonInstalled = path.join(root, 'Amazon Installed');
+  fs.mkdirSync(amazonInstalled, { recursive: true });
+  write(path.join(root, 'store_cache', 'nile_library.json'), JSON.stringify({
+    library: [
+      { app_name: 'amz-installed', title: 'Amazon Installed', install: { install_path: amazonInstalled, platform: 'windows' } },
+      { app_name: 'amz-owned', title: 'Amazon Owned', install: { install_path: '', platform: 'windows' } },
+    ],
   }));
 
   const darwin = require('../src/platform/darwin');
   const h = darwin._internal.readHeroic([root]);
-  assert.equal(h.epic.length, 1, 'un build Windows ne doit pas être listé');
-  assert.equal(h.epic[0].name, 'Mac Game');
-  assert.equal(h.epic[0].viaHeroic, true);
-  assert.equal(h.epic[0].exe, macApp);
+  assert.equal(h.epic.length, 2, 'le build Windows reste géré par Heroic');
+  const mac = h.epic.find((g) => g.name === 'Mac Game');
+  const win = h.epic.find((g) => g.name === 'Windows Only');
+  assert.equal(mac.exe, macApp);
+  assert.equal(mac.heroicRunner, 'legendary');
+  assert.equal(win.exe, '', 'un build Windows n’a pas de bundle .app');
   assert.equal(h.gog.length, 1);
   assert.equal(h.gog[0].name, 'Celeste');
   assert.equal(h.gog[0].exe, celesteApp);
-  assert.equal(h.amazon.length, 0);
+  assert.equal(h.gogOwned.length, 1);
+  assert.equal(h.gogOwned[0].name, 'Owned GOG');
+  assert.equal(h.gogOwned[0].installed, false);
+  assert.equal(h.amazon.length, 1);
+  assert.equal(h.amazon[0].name, 'Amazon Installed');
+  assert.equal(h.amazon[0].exe, '');
+  assert.equal(h.amazonOwned.length, 1);
+  assert.equal(h.amazonOwned[0].name, 'Amazon Owned');
+  assert.equal(h.epicOwned.length, 1);
+  assert.equal(h.epicOwned[0].name, 'Owned Epic');
 });
 
 // ---------- Règles de lancement ----------

@@ -4,6 +4,22 @@ Les versions suivent le calendrier : `AAAA.MM.PATCH`. Le fork macOS garde sa pro
 numérotation ; le dépôt d'origine utilise encore SemVer (`2.0.0`), d'où l'écart assumé
 avec `package.json` en amont.
 
+## 2026.11.4 — 2026-11-18
+
+- **Heroic** : les builds Windows/Wine sont désormais listés et lancés par le protocole
+  `heroic://launch?appName=…&runner=…&gui=false` (Heroic gère Wine/CrossOver/Game Porting
+  Toolkit). Les builds macOS natifs restent lancés directement par `open -a`.
+- **Amazon Games** : bibliothèque Prime Gaming complète via `store_cache/nile_library.json`
+  (possédés + installés). Un jeu non installé propose « Installer », qui ouvre Heroic sur
+  la demande d'installation.
+- **GOG** : jeux possédés mais non installés via `store_cache/gog_library.json` de Heroic,
+  en complément des bundles `.app` de Galaxy.
+- **Epic** : la bibliothèque Legendary (`store_cache/legendary_library.json`) sert de
+  source de secours quand le Epic Games Launcher n'est pas installé.
+- Le bouton « Installer » est de nouveau proposé sur macOS pour Epic, GOG et Amazon
+  (la désinstallation reste réservée à Steam).
+- Tests Heroic étendus : build Windows sans bundle, jeux possédés GOG/Amazon/Epic.
+
 ## 2026.11.3 — 2026-11-18
 
 - **EA app (macOS)** : les jeux installés en bundles `.app` sont détectés dans

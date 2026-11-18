@@ -188,7 +188,6 @@ function appFromExecutable(installPath, executable) {
   return findAppIn(installPath);
 }
 
-const isMacPlatform = (p) => !p || /^(mac|osx|darwin)/i.test(String(p));
 const normName = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
 
 // ---------- GOG Galaxy ----------
@@ -329,68 +328,97 @@ function firstJson(paths) {
   return null;
 }
 
-function heroicHostedGame(installPath, executable, platform) {
-  if (!isMacPlatform(platform) || !installPath || !exists(installPath)) return '';
-  const app = appFromExecutable(installPath, executable);
-  return app && exists(app) ? app : '';
-}
-
-// Lecture pure, sans cache : utilisée par les tests et par heroicData().
+// Lecture pure, sans cache : utilisée par les tests et par loadHeroic().
+// On garde les jeux installés même sans bundle .app : Heroic sait les lancer (Wine, CrossOver,
+// Game Porting Toolkit) via son protocole heroic://launch. `exe` vide = lancement par Heroic.
 function readHeroic(roots = HEROIC_ROOTS) {
   const epic = [];
   const gog = [];
   const amazon = [];
+  const epicOwned = [];
+  const gogOwned = [];
+  const amazonOwned = [];
 
-  // Legendary : objet indexé par AppName
+  const heroicGame = (store, appName, title, installPath, executable, platform, runner) => {
+    const app = installPath ? appFromExecutable(installPath, executable) : '';
+    return base(store, appName, title, {
+      installed: true, viaHeroic: true, heroicRunner: runner,
+      installDir: installPath, library: installPath ? path.dirname(installPath) : '',
+      exe: app, workingDir: app ? path.dirname(app) : '',
+      processNames: app ? appProcessNames(app) : [],
+    });
+  };
+
+  // Legendary : objet indexé par AppName. Les builds Windows (Wine) sont conservés :
+  // c'est Heroic qui les lance, pas « open -a ».
   const legendary = firstJson(heroicFiles('legendaryConfig/legendary/installed.json', roots));
+  const epicInstalled = new Set();
   for (const [key, v] of Object.entries(legendary && typeof legendary === 'object' ? legendary : {})) {
     if (!v || typeof v !== 'object') continue;
-    const appName = v.app_name || key;
-    const app = heroicHostedGame(v.install_path, v.executable, v.platform);
-    if (!app) continue;
-    epic.push(base('epic', appName, v.title || appName, {
-      installed: true, viaHeroic: true, installDir: v.install_path, library: path.dirname(v.install_path),
-      exe: app, workingDir: path.dirname(app), processNames: appProcessNames(app),
-    }));
+    const appName = String(v.app_name || key);
+    if (!appName || !v.install_path || !exists(v.install_path)) continue;
+    epicInstalled.add(appName);
+    epic.push(heroicGame('epic', appName, v.title || appName, v.install_path, v.executable, v.platform, 'legendary'));
   }
 
   // gogdl : { installed: [...] }, sans titre ; les titres sont dans store_cache/gog_library.json
   const gogInstalled = firstJson(heroicFiles('gog_store/installed.json', roots));
   const gogLibrary = firstJson(heroicFiles('store_cache/gog_library.json', roots)) || firstJson(heroicFiles('gog_store/library.json', roots));
-  const titles = new Map(((gogLibrary && gogLibrary.games) || []).map((g) => [String(g.app_name), g.title]));
+  const gogTitles = new Map(((gogLibrary && gogLibrary.games) || []).map((g) => [String(g.app_name), g.title]));
+  const gogInstalledIds = new Set();
   for (const it of (gogInstalled && gogInstalled.installed) || []) {
     if (!it || typeof it !== 'object') continue;
     const appName = String(it.appName || it.app_name || '');
-    if (!appName) continue;
-    const app = heroicHostedGame(it.install_path, it.executable, it.platform);
-    if (!app) continue;
-    gog.push(base('gog', appName, titles.get(appName) || path.basename(it.install_path), {
-      installed: true, viaHeroic: true, installDir: it.install_path, library: path.dirname(it.install_path),
-      exe: app, workingDir: path.dirname(app), processNames: appProcessNames(app),
-    }));
+    if (!appName || !it.install_path || !exists(it.install_path)) continue;
+    gogInstalledIds.add(appName);
+    gog.push(heroicGame('gog', appName, gogTitles.get(appName) || path.basename(it.install_path), it.install_path, it.executable, it.platform, 'gog'));
+  }
+  // Jeux GOG possédés mais pas installés : l'App Store local de Heroic les connaît.
+  for (const g of (gogLibrary && gogLibrary.games) || []) {
+    const id = String(g.app_name || '');
+    if (!id || gogInstalledIds.has(id) || g.is_dlc || /redistrib/i.test(String(g.title || ''))) continue;
+    gogOwned.push(base('gog', id, g.title || id, { installed: false, viaHeroic: true, heroicRunner: 'gog' }));
   }
 
-  // Nile (Amazon) : structure tolérante (liste, objet indexé ou { installed: [...] })
+  // Nile (Amazon) : installed.json peut être une liste, un objet indexé ou { installed: [...] }
   const nileRaw = firstJson(heroicFiles('nile_config/nile/installed.json', roots));
   const nile = !nileRaw ? [] : Array.isArray(nileRaw) ? nileRaw
     : Array.isArray(nileRaw.installed) ? nileRaw.installed
       : Object.entries(nileRaw).map(([k, v]) => ({ app_name: k, ...(v && typeof v === 'object' ? v : {}) }));
-  const amazonLib = firstJson(heroicFiles('store_cache/amazon_library.json', roots));
-  const amazonTitles = new Map(((amazonLib && (amazonLib.games || amazonLib)) || []).map((g) => [String(g.app_name || g.id), g.title]));
+  const nileLibrary = firstJson(heroicFiles('store_cache/nile_library.json', roots));
+  const amazonTitles = new Map(((nileLibrary && nileLibrary.library) || []).map((g) => [String(g.app_name), g.title]));
+  const amazonInstalled = new Set();
   for (const it of nile) {
     if (!it || typeof it !== 'object') continue;
     const appName = String(it.app_name || it.appName || it.id || '');
-    if (!appName) continue;
     const installPath = it.path || it.install_path || it.installPath || '';
-    const app = heroicHostedGame(installPath, it.executable, it.platform);
-    if (!app) continue;
-    amazon.push(base('amazon', appName, it.title || amazonTitles.get(appName) || path.basename(installPath), {
-      installed: true, viaHeroic: true, installDir: installPath, library: path.dirname(installPath),
-      exe: app, workingDir: path.dirname(app), processNames: appProcessNames(app),
-    }));
+    if (!appName || !installPath || !exists(installPath)) continue;
+    amazonInstalled.add(appName);
+    amazon.push(heroicGame('amazon', appName, it.title || amazonTitles.get(appName) || path.basename(installPath), installPath, it.executable, it.platform, 'nile'));
+  }
+  // Amazon : la bibliothèque Prime Gaming complète (possédés + installés).
+  for (const g of (nileLibrary && nileLibrary.library) || []) {
+    const id = String(g.app_name || '');
+    if (!id || amazonInstalled.has(id) || g.is_dlc) continue;
+    const installPath = (g.install && g.install.install_path) || '';
+    if (installPath && exists(installPath)) {
+      // Le jeu est sur le disque mais absent d'installed.json : on le traite comme installé.
+      amazon.push(heroicGame('amazon', id, g.title || id, installPath, '', (g.install || {}).platform, 'nile'));
+      amazonInstalled.add(id);
+      continue;
+    }
+    amazonOwned.push(base('amazon', id, g.title || id, { installed: false, viaHeroic: true, heroicRunner: 'nile' }));
   }
 
-  return { epic, gog, amazon };
+  // Legendary sait aussi lister toute la bibliothèque Epic possédée.
+  const legendaryLib = firstJson(heroicFiles('store_cache/legendary_library.json', roots));
+  for (const g of (legendaryLib && legendaryLib.library) || []) {
+    const id = String(g.app_name || '');
+    if (!id || epicInstalled.has(id) || g.is_dlc) continue;
+    epicOwned.push(base('epic', id, g.title || id, { installed: false, viaHeroic: true, heroicRunner: 'legendary' }));
+  }
+
+  return { epic, gog, amazon, epicOwned, gogOwned, amazonOwned };
 }
 
 // Le sync appelle loadEpic puis loadPlatforms : on évite de relire les mêmes fichiers deux fois.
@@ -466,18 +494,21 @@ const epicDataDir = EPIC_DATA_CANDIDATES.find(exists) || EPIC_DATA_CANDIDATES[0]
 // Les jeux Epic installés par Heroic/Legendary complètent ceux du Epic Games Launcher.
 // On mémorise ceux déjà fusionnés pour ne pas les remettre dans la liste « autres » (visuels).
 let heroicMerged = new Set();
+let epicEglAvailable = false;
 function loadEpic(stats) {
   const egl = require('../epic').loadEpic(stats, { dataDir: epicDataDir, platform: 'mac' });
+  epicEglAvailable = !!egl.available;
   heroicMerged = new Set();
   for (const h of loadHeroic().epic) {
     // Le cache Epic et Legendary ne nomment pas toujours l'app pareil : on retombe sur le titre.
     const ex = egl.games.find((g) => g.appName === h.appName)
-      || egl.games.find((g) => normName(g.name) === normName(h.name));
+      || egl.games.find((g) => g.name && h.name && normName(g.name) === normName(h.name));
     if (!ex) continue;
     heroicMerged.add(h.appName);
     Object.assign(ex, {
-      installed: true, viaHeroic: true, installDir: h.installDir, library: h.library,
-      exe: h.exe, workingDir: h.workingDir,
+      installed: true, viaHeroic: true, heroicRunner: h.heroicRunner, platformId: h.platformId,
+      installDir: h.installDir, library: h.library,
+      ...(h.exe ? { exe: h.exe, workingDir: h.workingDir } : {}),
       processNames: [...new Set([...(ex.processNames || []), ...(h.processNames || [])])],
     });
   }
@@ -549,6 +580,10 @@ module.exports = {
     return [
       ...loadGog(), ...loadEa(), ...loadItch(), ...loadBattleNet(), ...loadRiot(),
       ...loadCustom(customGames), ...epicOnly, ...h.amazon,
+      // Bibliothèques possédées : GOG et Amazon n'ont pas d'autre source locale sur macOS.
+      ...h.gogOwned, ...h.amazonOwned,
+      // La bibliothèque Epic de Legendary ne sert que si le Epic Games Launcher n'est pas là.
+      ...(epicEglAvailable ? [] : h.epicOwned),
     ];
   },
   loadMorePlatforms: async () => [],

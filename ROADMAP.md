@@ -4,7 +4,7 @@ Fork macOS de [jclementc/CLRE-Launcher](https://github.com/jclementc/CLRE-Launch
 Objectif : un launcher unique sur macOS, puis une version Steam Deck. Windows reste la
 référence : la couche plateforme ne doit rien changer à son comportement.
 
-Dernière mise à jour : 2026-11-18 · version `2026.11.3`.
+Dernière mise à jour : 2026-11-18 · version `2026.11.4`.
 
 ## État actuel
 
@@ -14,10 +14,10 @@ Dernière mise à jour : 2026-11-18 · version `2026.11.3`.
 | Steam | ✅ | 709 jeux lus sur la machine de test, compte, collections, succès, lancement |
 | Epic Games Launcher | ✅ | 140 jeux Mac possédés, manifestes, lancement |
 | GOG Galaxy | ✅ | bundles `.app` reconnus par `goggame-<id>.info` |
-| Heroic (Epic/GOG/Amazon) | ✅ | `installed.json` de Legendary/gogdl/Nile, builds Mac natifs |
+| Heroic (Epic/GOG/Amazon) | ✅ | `installed.json` de Legendary/gogdl/Nile + bibliothèques possédées ; Mac natif ou Wine |
 | EA app | ✅ | bundles `.app` de `/Applications/EA Games` ou identifiant `com.ea.*` |
 | itch.io | ✅ | reçus `.itch/receipt.json.gz` de `~/Library/Application Support/itch/apps` |
-| Amazon Games | 🟡 | uniquement via Heroic/Nile |
+| Amazon Games | ✅ | bibliothèque Prime complète via Heroic/Nile, lancement par `heroic://` |
 | Battle.net | 🟡 | jeux Blizzard détectés dans `/Applications`, lancement par URI |
 | Riot (LoL) | 🟡 | bundle natif détecté, lancement par `open` |
 | Jeux ajoutés à la main | ✅ | `.app`, exécutables, arguments, jaquettes |
@@ -55,9 +55,12 @@ Légende : ✅ fonctionne · 🟡 partiel ou à valider à l'écran · ❌ absen
 - [ ] **Réticule** : géométrie de fenêtre via `CGWindowListCopyWindowInfo` (petit helper
       Swift) ou `System Events` (permission Accessibilité).
 - [ ] **Raccourci Bureau** : alias Finder ou petit `.app` généré par `osacompile`.
-- [x] **Heroic** : lecture des manifestes Legendary/gogdl/Nile (builds Mac natifs).
+- [x] **Heroic** : lecture des manifestes Legendary/gogdl/Nile, builds Mac natifs et
+      builds Windows lancés par `heroic://launch`.
 - [x] **itch.io** : reçus `.itch/receipt.json.gz` dans `~/Library/Application Support/itch/apps`.
 - [x] **EA app** : bundles `.app` de `EA Games` ou identifiant `com.ea.*`.
+- [x] **Amazon Games** : bibliothèque Prime (possédés + installés) lue dans Nile ; Heroic
+      reste obligatoire pour installer et lancer (aucun client Amazon macOS).
 - [ ] **Battle.net** : trouver la source locale fiable (base du client, pas une liste de
       noms codée en dur), et couvrir les jeux hors `/Applications`.
 - [ ] **Saves / récap / journal** : vérifier les succès et captures Steam sur macOS

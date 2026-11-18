@@ -494,6 +494,10 @@ function launchExe(g, extra = '') {
     () => win && win.webContents.send('toast', `Impossible de lancer ${g.name}`));
 }
 
+// Heroic sait lancer ses jeux (y compris les builds Windows via Wine) par son protocole.
+// gui=false évite d'ouvrir sa fenêtre quand tout se passe bien.
+const heroicUri = (g) => `heroic://launch?appName=${encodeURIComponent(g.platformId || g.appName || '')}&runner=${encodeURIComponent(g.heroicRunner || 'legendary')}&gui=false`;
+
 function action(key, kind) {
   const g = games.get(String(key));
   if (!g) return;
@@ -502,8 +506,11 @@ function action(key, kind) {
   const extra = kind === 'play' ? beforeLaunch(g.key) : '';
   switch (g.store) {
     case 'epic':
-      // Installé par Heroic (build macOS natif) : on ouvre le bundle directement.
-      if (g.viaHeroic && kind === 'play' && g.exe) return launchExe(g, extra);
+      // Géré par Heroic (bundle macOS natif ou build Windows via Wine) : c'est lui qui lance.
+      if (g.viaHeroic) {
+        if (kind === 'play') return g.exe ? launchExe(g, extra) : open(heroicUri(g));
+        if (kind === 'install') return open(heroicUri(g));
+      }
       // Installés par le launcher (Legendary) : lancement et désinstallation sans le Epic Games Launcher
       if (g.viaLegendary && kind === 'play' && g.needsUpdate) return epicDl.enqueue(g.appName, g.name, { update: true }).catch((e) => ({ error: e.message }));
       if (g.viaLegendary && kind === 'play') return epicDl.launch(g.appName);
@@ -518,6 +525,11 @@ function action(key, kind) {
       if (kind === 'store') return search('https://store.epicgames.com/browse?q=');
       return open('com.epicgames.launcher://store/library');
     case 'gog':
+      // Installé ou possédé via Heroic : lancement (ou proposition d'installation) par Heroic.
+      if (g.viaHeroic) {
+        if (kind === 'play') return g.exe ? launchExe(g, extra) : open(heroicUri(g));
+        if (kind === 'install') return open(heroicUri(g));
+      }
       // Mise à jour disponible : le bouton « Mettre à jour » réinstalle par-dessus avec le dernier installateur
       if (kind === 'play' && g.needsUpdate && gog && gog.auth) {
         return gog.enqueue(g.platformId, g.name, { installDir: g.installDir }).catch((e) => ({ error: e.message }));
@@ -553,6 +565,10 @@ function action(key, kind) {
       if (g.riotClient && (kind === 'play' || kind === 'install')) return spawn(g.riotClient, [`--launch-product=${g.platformId}`, '--launch-patchline=live'], { detached: true, stdio: 'ignore' }).unref();
       return open('https://www.riotgames.com/fr');
     case 'amazon':
+      if (g.viaHeroic) {
+        if (kind === 'play') return g.exe ? launchExe(g, extra) : open(heroicUri(g));
+        if (kind === 'install') return open(heroicUri(g));
+      }
       if (kind === 'play' && g.exe) return launchExe(g, extra);
       if (kind === 'store') return search('https://gaming.amazon.com/search?q=');
       return open(kind === 'play' ? `amazon-games://play/${g.platformId}` : 'amazon-games://');

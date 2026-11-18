@@ -97,8 +97,27 @@ Heroic s'appuie sur trois outils, chacun avec sa liste de jeux installés sous
 | gogdl | `gog_store/installed.json` (+ titres dans `store_cache/gog_library.json`) | GOG |
 | Nile | `nile_config/nile/installed.json` | Amazon |
 
-Seuls les jeux dont `platform` vaut Mac/osx **et** qui possèdent un bundle `.app` sont
-listés : un build Windows lancé par Wine doit passer par Heroic, pas par `open -a`.
+Les bibliothèques **possédées** viennent de `store_cache/legendary_library.json`,
+`store_cache/gog_library.json` et `store_cache/nile_library.json` (`library` pour
+Legendary et Nile, `games` pour GOG).
+
+Deux modes de lancement :
+
+- un bundle `.app` est trouvé dans le dossier d'installation → `open -a`, lancement
+  direct et temps de jeu mesurable ;
+- sinon (build Windows sous Wine/CrossOver) → protocole Heroic :
+
+```
+heroic://launch?appName=<app>&runner=<legendary|gog|nile>&gui=false
+```
+
+Heroic exécute le jeu (Wine, préfixe, DXVK/Metal) et `gui=false` évite d'ouvrir sa
+fenêtre. Les builds Windows n'ont pas de nom de processus fiable côté macOS : le temps
+de jeu n'est pas mesuré pour eux, seulement affiché s'il vient d'ailleurs.
+
+**Amazon** n'a aucun client macOS : Heroic/Nile est la seule voie. La bibliothèque Prime
+est lue localement (installés + possédés), et « Installer » ouvre Heroic sur la demande
+d'installation.
 
 ### Nom de processus
 Pour mesurer le temps de jeu, il faut le nom qui apparaît dans `ps`, c'est-à-dire
